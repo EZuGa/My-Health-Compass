@@ -9,18 +9,28 @@ import { SubspecialtyDialog } from "./SubspecialtyDialog";
 import { LogoMark } from "./LogoMark";
 import { GlobalDisclaimer } from "./GlobalDisclaimer";
 import { nejmSections } from "@/data/health";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, getCachedUser } from "@/lib/api";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(getCachedUser()?.role ?? null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    const cached = getCachedUser();
+    setEmail(cached?.email ?? null);
+    setRole(cached?.role ?? null);
+    auth
+      .me()
+      .then((u) => {
+        setEmail(u.email);
+        setRole(u.role);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -37,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signOut = async () => {
     await queryClient.cancelQueries();
     queryClient.clear();
-    await supabase.auth.signOut();
+    auth.logout();
     navigate({ to: "/auth", replace: true });
   };
 
@@ -162,6 +172,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex flex-col gap-2">
+            {role !== "doctor" && (
+            <>
             <details className="group rounded-md cloud-panel overflow-hidden">
               <summary
                 className="cursor-pointer list-none block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md"
@@ -254,6 +266,54 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               ToxCheck
             </Link>
+            </>
+            )}
+
+            {/* Backend-powered EHR (consent-based records API) */}
+            <div className="mt-2 pt-2 border-t border-foreground/15 flex flex-col gap-2">
+              <span className="text-center text-[9px] uppercase tracking-[0.2em] font-extrabold opacity-50">
+                Electronic Health Record
+              </span>
+              {role !== "doctor" && (
+                <>
+                  <Link
+                    to="/records"
+                    onClick={closeSidebar}
+                    className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                    style={{
+                      background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 100%)",
+                      color: "#2a2a55",
+                    }}
+                  >
+                    Health Records
+                  </Link>
+                  <Link
+                    to="/intake"
+                    onClick={closeSidebar}
+                    className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                    style={{
+                      background: "linear-gradient(160deg, #cde7d6 0%, #9fd3b4 100%)",
+                      color: "#153019",
+                    }}
+                  >
+                    AI Intake
+                  </Link>
+                </>
+              )}
+              {role !== "patient" && (
+                <Link
+                  to="/clinic"
+                  onClick={closeSidebar}
+                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                  style={{
+                    background: "linear-gradient(160deg, #ffe0b8 0%, #f0a35a 100%)",
+                    color: "#4a2a10",
+                  }}
+                >
+                  Clinician Console
+                </Link>
+              )}
+            </div>
           </div>
 
           <div className="flex-1" />

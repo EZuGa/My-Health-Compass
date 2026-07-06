@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
 
 const STORAGE_KEY = "zrunva.consent.v1";
 
@@ -38,38 +37,11 @@ export function ConsentGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const local = loadConsent();
-      if (local) {
-        if (!cancelled) {
-          setConsent(local);
-          setReady(true);
-        }
-        // Best-effort: mirror to user metadata so future devices skip the gate.
-        try {
-          const { data } = await supabase.auth.getUser();
-          const meta = data.user?.user_metadata as { consent?: ConsentRecord } | undefined;
-          if (data.user && !meta?.consent) {
-            await supabase.auth.updateUser({ data: { consent: local } });
-          }
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      // No local record — check server-side user metadata.
-      try {
-        const { data } = await supabase.auth.getUser();
-        const meta = data.user?.user_metadata as { consent?: ConsentRecord } | undefined;
-        if (meta?.consent?.signature && meta.consent.signedAt) {
-          saveConsentLocal(meta.consent);
-          if (!cancelled) setConsent(meta.consent);
-        }
-      } catch {
-        /* ignore */
-      }
-      if (!cancelled) setReady(true);
-    })();
+    const local = loadConsent();
+    if (!cancelled) {
+      if (local) setConsent(local);
+      setReady(true);
+    }
     return () => {
       cancelled = true;
     };
@@ -89,10 +61,6 @@ export function ConsentGate({ children }: { children: ReactNode }) {
       };
       saveConsentLocal(rec);
       setConsent(rec);
-      // Persist to the user's account so future sessions/devices skip the gate.
-      supabase.auth.updateUser({ data: { consent: rec } }).catch(() => {
-        /* ignore */
-      });
     };
 
     return (

@@ -16,8 +16,11 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedToxcheckRouteImport } from './routes/_authenticated/toxcheck'
 import { Route as AuthenticatedTimelineRouteImport } from './routes/_authenticated/timeline'
+import { Route as AuthenticatedRecordsRouteImport } from './routes/_authenticated/records'
+import { Route as AuthenticatedIntakeRouteImport } from './routes/_authenticated/intake'
 import { Route as AuthenticatedFormsRouteImport } from './routes/_authenticated/forms'
 import { Route as AuthenticatedConnectionsRouteImport } from './routes/_authenticated/connections'
+import { Route as AuthenticatedClinicRouteImport } from './routes/_authenticated/clinic'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedSectionSectionIdRouteImport } from './routes/_authenticated/section.$sectionId'
 import { Route as AuthenticatedFormsFormIdRouteImport } from './routes/_authenticated/forms.$formId'
@@ -58,6 +61,16 @@ const AuthenticatedTimelineRoute = AuthenticatedTimelineRouteImport.update({
   path: '/timeline',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRecordsRoute = AuthenticatedRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedIntakeRoute = AuthenticatedIntakeRouteImport.update({
+  id: '/intake',
+  path: '/intake',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedFormsRoute = AuthenticatedFormsRouteImport.update({
   id: '/forms',
   path: '/forms',
@@ -69,6 +82,11 @@ const AuthenticatedConnectionsRoute =
     path: '/connections',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedClinicRoute = AuthenticatedClinicRouteImport.update({
+  id: '/clinic',
+  path: '/clinic',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
@@ -104,8 +122,11 @@ export interface FileRoutesByFullPath {
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/clinic': typeof AuthenticatedClinicRoute
   '/connections': typeof AuthenticatedConnectionsRoute
   '/forms': typeof AuthenticatedFormsRouteWithChildren
+  '/intake': typeof AuthenticatedIntakeRoute
+  '/records': typeof AuthenticatedRecordsRoute
   '/timeline': typeof AuthenticatedTimelineRoute
   '/toxcheck': typeof AuthenticatedToxcheckRoute
   '/box/$boxId': typeof AuthenticatedBoxBoxIdRoute
@@ -118,8 +139,11 @@ export interface FileRoutesByTo {
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/clinic': typeof AuthenticatedClinicRoute
   '/connections': typeof AuthenticatedConnectionsRoute
   '/forms': typeof AuthenticatedFormsRouteWithChildren
+  '/intake': typeof AuthenticatedIntakeRoute
+  '/records': typeof AuthenticatedRecordsRoute
   '/timeline': typeof AuthenticatedTimelineRoute
   '/toxcheck': typeof AuthenticatedToxcheckRoute
   '/': typeof AuthenticatedIndexRoute
@@ -135,8 +159,11 @@ export interface FileRoutesById {
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
+  '/_authenticated/clinic': typeof AuthenticatedClinicRoute
   '/_authenticated/connections': typeof AuthenticatedConnectionsRoute
   '/_authenticated/forms': typeof AuthenticatedFormsRouteWithChildren
+  '/_authenticated/intake': typeof AuthenticatedIntakeRoute
+  '/_authenticated/records': typeof AuthenticatedRecordsRoute
   '/_authenticated/timeline': typeof AuthenticatedTimelineRoute
   '/_authenticated/toxcheck': typeof AuthenticatedToxcheckRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -153,8 +180,11 @@ export interface FileRouteTypes {
     | '/for-clinics'
     | '/waitlist'
     | '/calendar'
+    | '/clinic'
     | '/connections'
     | '/forms'
+    | '/intake'
+    | '/records'
     | '/timeline'
     | '/toxcheck'
     | '/box/$boxId'
@@ -167,8 +197,11 @@ export interface FileRouteTypes {
     | '/for-clinics'
     | '/waitlist'
     | '/calendar'
+    | '/clinic'
     | '/connections'
     | '/forms'
+    | '/intake'
+    | '/records'
     | '/timeline'
     | '/toxcheck'
     | '/'
@@ -183,8 +216,11 @@ export interface FileRouteTypes {
     | '/for-clinics'
     | '/waitlist'
     | '/_authenticated/calendar'
+    | '/_authenticated/clinic'
     | '/_authenticated/connections'
     | '/_authenticated/forms'
+    | '/_authenticated/intake'
+    | '/_authenticated/records'
     | '/_authenticated/timeline'
     | '/_authenticated/toxcheck'
     | '/_authenticated/'
@@ -252,6 +288,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTimelineRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/records': {
+      id: '/_authenticated/records'
+      path: '/records'
+      fullPath: '/records'
+      preLoaderRoute: typeof AuthenticatedRecordsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/intake': {
+      id: '/_authenticated/intake'
+      path: '/intake'
+      fullPath: '/intake'
+      preLoaderRoute: typeof AuthenticatedIntakeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/forms': {
       id: '/_authenticated/forms'
       path: '/forms'
@@ -264,6 +314,13 @@ declare module '@tanstack/react-router' {
       path: '/connections'
       fullPath: '/connections'
       preLoaderRoute: typeof AuthenticatedConnectionsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/clinic': {
+      id: '/_authenticated/clinic'
+      path: '/clinic'
+      fullPath: '/clinic'
+      preLoaderRoute: typeof AuthenticatedClinicRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/calendar': {
@@ -317,8 +374,11 @@ const AuthenticatedFormsRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
+  AuthenticatedClinicRoute: typeof AuthenticatedClinicRoute
   AuthenticatedConnectionsRoute: typeof AuthenticatedConnectionsRoute
   AuthenticatedFormsRoute: typeof AuthenticatedFormsRouteWithChildren
+  AuthenticatedIntakeRoute: typeof AuthenticatedIntakeRoute
+  AuthenticatedRecordsRoute: typeof AuthenticatedRecordsRoute
   AuthenticatedTimelineRoute: typeof AuthenticatedTimelineRoute
   AuthenticatedToxcheckRoute: typeof AuthenticatedToxcheckRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -329,8 +389,11 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
+  AuthenticatedClinicRoute: AuthenticatedClinicRoute,
   AuthenticatedConnectionsRoute: AuthenticatedConnectionsRoute,
   AuthenticatedFormsRoute: AuthenticatedFormsRouteWithChildren,
+  AuthenticatedIntakeRoute: AuthenticatedIntakeRoute,
+  AuthenticatedRecordsRoute: AuthenticatedRecordsRoute,
   AuthenticatedTimelineRoute: AuthenticatedTimelineRoute,
   AuthenticatedToxcheckRoute: AuthenticatedToxcheckRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { ingestData, transcribeAudio, type IngestResult } from "@/lib/ingest.functions";
-import { saveIngestBatch } from "@/lib/patient-data.functions";
+import { api } from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
 import { getSectionLabel } from "@/lib/ingested";
 import { DropZone } from "@/components/DropZone";
@@ -53,7 +53,6 @@ function fileToDataUrl(f: File): Promise<string> {
 export function IngestionHub() {
   const ingest = useServerFn(ingestData);
   const stt = useServerFn(transcribeAudio);
-  const persistBatch = useServerFn(saveIngestBatch);
   const patientId = usePatientId();
 
 
@@ -166,33 +165,29 @@ export function IngestionHub() {
       setBatches(next);
       saveBatches(next);
       reset();
-      // Mirror to cloud so the patient record updates and nothing is lost.
+      // Persist each extracted observation to the backend so the patient's
+      // record updates and doctors with a grant can see it.
       if (patientId) {
-        persistBatch({
-          data: {
-            patient_id: patientId,
-            batch_id: batch.id,
-            source_kind: result.source_kind,
-            source_label: sourceLabel.trim() || undefined,
-            summary: result.summary,
-            occurred_at: batch.at,
-            observations: (result.observations ?? []).map((o) => ({
-              section: o.section,
-              box: o.box,
+        const label = sourceLabel.trim() || result.source_kind;
+        Promise.all(
+          (result.observations ?? []).map((o) =>
+            api.addObservation(patientId, {
+              box: o.box || "general",
               metric: o.metric,
               value_text: o.value,
               value_num: Number.isFinite(Number(o.value)) ? Number(o.value) : null,
               unit: o.unit ?? null,
               observed_at: o.date
-                ? (o.date.length <= 10 ? new Date(o.date + "T00:00:00Z").toISOString() : o.date)
+                ? o.date.length <= 10
+                  ? new Date(o.date + "T00:00:00Z").toISOString()
+                  : o.date
                 : batch.at,
-              source_kind: result.source_kind,
-              source_label: sourceLabel.trim() || undefined,
-              setting: o.setting,
+              source_kind: "document",
+              source_label: label,
               note: o.note ?? null,
-            })),
-          },
-        }).catch((e) => console.warn("cloud save failed", e));
+            }),
+          ),
+        ).catch((e) => console.warn("backend save failed", e));
       }
     } catch (e: any) {
       setErr(e.message ?? "Ingestion failed");

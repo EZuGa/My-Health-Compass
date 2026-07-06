@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
 import { Trash2, Pencil, Check, X, FlaskConical } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
-import {
-  saveToxin as saveToxinFn,
-  deleteToxin as deleteToxinFn,
-  updateToxin as updateToxinFn,
-  listToxins as listToxinsFn,
-} from "@/lib/patient-data.functions";
-import { usePatientId } from "@/lib/usePatient";
 
 export type ToxinCategory =
   | "carcinogen"
@@ -52,20 +44,6 @@ const CATEGORY_COLOR: Record<ToxinCategory, { bg: string; fg: string }> = {
   additive: { bg: "#ffc2d2", fg: "#5a1a2e" },
   allergen: { bg: "#d9663d", fg: "#fff" },
   other: { bg: "#8a6b6b", fg: "#fff" },
-};
-
-// Cloud note round-trip: prefix the category so we can recover it from the
-// existing `note` column without a schema change.
-const encodeNote = (t: { category?: ToxinCategory; notes: string }) =>
-  t.category ? `[${t.category}] ${t.notes ?? ""}` : (t.notes ?? "");
-
-const decodeNote = (note: string | null | undefined): { category?: ToxinCategory; notes: string } => {
-  const raw = note ?? "";
-  const m = raw.match(/^\[([a-z_]+)\]\s*(.*)$/s);
-  if (m && (Object.keys(CATEGORY_LABEL) as string[]).includes(m[1])) {
-    return { category: m[1] as ToxinCategory, notes: m[2] };
-  }
-  return { notes: raw };
 };
 
 export function loadToxins(): SavedToxin[] {
@@ -117,12 +95,6 @@ export function ToxinsBox() {
   const [items, setItems] = useState<SavedToxin[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<SavedToxin | null>(null);
-  const patientId = usePatientId();
-  const listCloud = useServerFn(listToxinsFn);
-  const saveCloud = useServerFn(saveToxinFn);
-  const delCloud = useServerFn(deleteToxinFn);
-  const updCloud = useServerFn(updateToxinFn);
-  const [cloudIds, setCloudIds] = useState<Record<string, string>>({});
 
   // newest-first sort helper
   const sortNewestFirst = (xs: SavedToxin[]) =>
@@ -139,61 +111,10 @@ export function ToxinsBox() {
     };
   }, []);
 
-  // Pull cloud rows once patient id is available; cloud is source of truth
-  useEffect(() => {
-    if (!patientId) return;
-    (async () => {
-      try {
-        const rows = await listCloud({ data: { patient_id: patientId } });
-        if (!rows?.length) {
-          // first-time: push local items up to cloud
-          for (const it of loadToxins()) {
-            try {
-              const saved = await saveCloud({
-                data: {
-                  patient_id: patientId,
-                  name: it.name,
-                  severity: it.severity,
-                  source: it.source,
-                  note: encodeNote(it),
-                  identified_at: it.savedAt,
-                },
-              });
-              setCloudIds((m) => ({ ...m, [it.id]: saved.id }));
-            } catch {}
-          }
-          return;
-        }
-        const mapped: SavedToxin[] = rows.map((r: any) => {
-          const dec = decodeNote(r.note);
-          return {
-            id: r.id,
-            name: r.name,
-            source: r.source ?? "",
-            severity: (r.severity ?? "low") as SavedToxin["severity"],
-            category: dec.category,
-            notes: dec.notes,
-            savedAt: r.identified_at ?? r.created_at,
-          };
-        });
-        setItems(sortNewestFirst(mapped));
-        setCloudIds(Object.fromEntries(mapped.map((m) => [m.id, m.id])));
-        // keep local cache in sync (still used by crossLinks)
-        saveToxins(mapped);
-      } catch (e) {
-        console.warn("toxins cloud load failed", e);
-      }
-    })();
-  }, [patientId, listCloud, saveCloud]);
-
-  const remove = async (id: string) => {
+  const remove = (id: string) => {
     const next = items.filter((i) => i.id !== id);
     setItems(next);
     saveToxins(next);
-    const remoteId = cloudIds[id] ?? id;
-    if (patientId) {
-      try { await delCloud({ data: { id: remoteId } }); } catch {}
-    }
   };
 
   const startEdit = (it: SavedToxin) => {
@@ -201,27 +122,13 @@ export function ToxinsBox() {
     setDraft({ ...it });
   };
 
-  const commitEdit = async () => {
+  const commitEdit = () => {
     if (!draft) return;
     const next = sortNewestFirst(items.map((i) => (i.id === draft.id ? draft : i)));
     setItems(next);
     saveToxins(next);
     setEditing(null);
     setDraft(null);
-    const remoteId = cloudIds[draft.id] ?? draft.id;
-    if (patientId) {
-      try {
-        await updCloud({
-          data: {
-            id: remoteId,
-            name: draft.name,
-            severity: draft.severity,
-            source: draft.source,
-            note: encodeNote(draft),
-          },
-        });
-      } catch {}
-    }
   };
 
   return (
