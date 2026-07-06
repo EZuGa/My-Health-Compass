@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from .database import Base, SessionLocal, engine
@@ -30,6 +31,16 @@ app = FastAPI(
         "Patients own their history; doctors must request access and the patient approves."
     ),
     version="0.1.0",
+)
+
+# Browser frontend (Vite dev server) calls this API cross-origin with a bearer
+# token, so permissive CORS is fine in dev. Tighten allow_origins in production.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

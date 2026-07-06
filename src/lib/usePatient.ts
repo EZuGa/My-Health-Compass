@@ -1,54 +1,30 @@
 import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import { getOrCreatePatient } from "@/lib/patient-data.functions";
-import { patient as patientMock } from "@/data/health";
-import { supabase } from "@/integrations/supabase/client";
-
-const STORAGE_KEY = "zrunva.patient.id.v1";
+import { auth, getCachedUser, isAuthed } from "@/lib/api";
 
 /**
- * Ensures a `patients` row exists for the current user keyed by the local
- * record number (pid). Returns the patient row id, or null while loading or
- * if the user is not signed in. Caches the id in localStorage to avoid an
- * extra round-trip on every mount.
+ * Returns the signed-in user's id (the patient id in the backend, since a
+ * patient owns their own record). Null while loading or when not signed in.
+ * The api layer caches the user in localStorage, so there's no round-trip on
+ * mount once the user has been fetched.
  */
-export function usePatientId() {
-  const ensure = useServerFn(getOrCreatePatient);
-  const [id, setId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(STORAGE_KEY);
-  });
+export function usePatientId(): number | null {
+  const [id, setId] = useState<number | null>(() => getCachedUser()?.id ?? null);
 
   useEffect(() => {
     let cancelled = false;
+    if (!isAuthed()) return;
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) return; // not signed in — skip silently
-        const row = await ensure({
-          data: {
-            pid: patientMock.pid,
-            display_name: null,
-            dob: patientMock.dob,
-            sex: patientMock.sex,
-          },
-        });
-        if (cancelled) return;
-        if (row?.id) {
-          setId(row.id);
-          try {
-            window.localStorage.setItem(STORAGE_KEY, row.id);
-          } catch {}
-        }
-      } catch (err) {
-        // best-effort; UI still works against local storage
-        console.warn("usePatientId failed", err);
+        const user = await auth.me();
+        if (!cancelled) setId(user.id);
+      } catch {
+        // best-effort; components fall back to localStorage
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [ensure]);
+  }, []);
 
   return id;
 }

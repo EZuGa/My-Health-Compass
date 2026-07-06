@@ -131,20 +131,15 @@ function RootComponent() {
   const router = useRouter();
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      const sub = supabase.auth.onAuthStateChange((event) => {
-        if (cancelled) return;
-        if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
-        router.invalidate();
-        if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
-      });
-      return () => sub.data.subscription.unsubscribe();
-    })();
-    return () => {
-      cancelled = true;
+    // Cross-tab auth sync: if the token is added/removed in another tab,
+    // refresh the router and cached queries so the UI reflects it.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "hp.token") return;
+      router.invalidate();
+      queryClient.invalidateQueries();
     };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [queryClient, router]);
 
   return (

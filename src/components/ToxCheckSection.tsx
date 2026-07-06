@@ -5,8 +5,6 @@ import { DropZone } from "@/components/DropZone";
 import { CameraCapture } from "@/components/CameraCapture";
 import { analyzeToxins, type ToxAnalysis, type ToxSeverity } from "@/lib/toxcheck.functions";
 import { appendToxins } from "@/components/ToxinsBox";
-import { saveToxin as saveToxinFn } from "@/lib/patient-data.functions";
-import { usePatientId } from "@/lib/usePatient";
 import { Link } from "@tanstack/react-router";
 
 const SEV_STYLE: Record<ToxSeverity, { bg: string; fg: string; label: string }> = {
@@ -42,8 +40,6 @@ export function ToxCheckSection() {
   const [analysis, setAnalysis] = useState<ToxAnalysis | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
   const analyze = useServerFn(analyzeToxins);
-  const saveCloud = useServerFn(saveToxinFn);
-  const patientId = usePatientId();
 
   const saveToExposures = async () => {
     if (!analysis) return;
@@ -60,21 +56,6 @@ export function ToxCheckSection() {
     const added = appendToxins(flat);
     setSavedCount(added);
     setTimeout(() => setSavedCount(null), 4000);
-    if (patientId) {
-      await Promise.all(
-        flat.map((t) =>
-          saveCloud({
-            data: {
-              patient_id: patientId,
-              name: t.name,
-              severity: t.severity,
-              source: t.source,
-              note: t.category ? `[${t.category}] ${t.notes}` : t.notes,
-            },
-          }).catch(() => null),
-        ),
-      );
-    }
   };
 
 

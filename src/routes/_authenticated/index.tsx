@@ -1,9 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { DaliByBox } from "@/components/DaliArt";
 import { boxes, patient } from "@/data/health";
+import { getCachedUser } from "@/lib/api";
 
 export const Route = createFileRoute("/_authenticated/")({
+  beforeLoad: () => {
+    // The passport dashboard is patient-facing; send doctors to their console.
+    if (getCachedUser()?.role === "doctor") throw redirect({ to: "/clinic" });
+  },
   head: () => ({
     meta: [
       { title: "The Health Passport — Dashboard" },
