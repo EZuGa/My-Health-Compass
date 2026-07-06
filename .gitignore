@@ -1,0 +1,23 @@
+# Repo root: frontend/ and backend/ each have their own .gitignore too.
+node_modules/
+.vite/
+dist/
+build/
+.output/
+.nitro/
+.tanstack/
+
+# Python / backend local
+__pycache__/
+*.pyc
+*.db
+uploads/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db

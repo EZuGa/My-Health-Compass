@@ -31,8 +31,18 @@ const EPISODES: EpisodeType[] = [
   "emergency_outpatient",
 ];
 
+type ClinicTab = "overview" | "access" | "assessments" | "patients";
+
+const CLINIC_TABS: { id: ClinicTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "access", label: "Access & Consent" },
+  { id: "assessments", label: "Assessments" },
+  { id: "patients", label: "Patient Lookup" },
+];
+
 function ClinicPage() {
   const user = getCachedUser();
+  const [tab, setTab] = useState<ClinicTab>("overview");
   const categories = useAsync<Category[]>(() => api.listCategories(), []);
 
   if (user && user.role !== "doctor") {
@@ -51,6 +61,8 @@ function ClinicPage() {
     );
   }
 
+  const cats = categories.data ?? [];
+
   return (
     <AppShell>
       <section className="max-w-5xl w-full">
@@ -59,15 +71,40 @@ function ClinicPage() {
           Request consent, review patients you've been granted, and file
           assessments — all against the backend EHR.
         </p>
+        <nav className="mt-4 flex flex-wrap gap-2">
+          {CLINIC_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 text-[11px] uppercase tracking-wider font-extrabold rounded-md border border-foreground/30 ${
+                tab === t.id
+                  ? "bg-[color:var(--mint-deep)]"
+                  : "hover:bg-[color:var(--mint-soft)]"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
       </section>
 
       <div className="max-w-5xl w-full flex flex-col gap-5">
-        <DoctorDashboard />
-        <OutgoingRequests />
-        <RequestAccess categories={categories.data ?? []} />
-        <SubmitAssessment categories={categories.data ?? []} />
-        <MyAssessments />
-        <PatientViewer categories={categories.data ?? []} />
+        {tab === "overview" ? (
+          <DoctorDashboard />
+        ) : tab === "access" ? (
+          <>
+            <RequestAccess categories={cats} />
+            <OutgoingRequests />
+          </>
+        ) : tab === "assessments" ? (
+          <>
+            <SubmitAssessment categories={cats} />
+            <MyAssessments />
+          </>
+        ) : (
+          <PatientViewer categories={cats} />
+        )}
       </div>
     </AppShell>
   );
