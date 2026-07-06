@@ -19,18 +19,22 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
+  const user = getCachedUser();
+  const displayName = user?.full_name ?? `Personal Record № ${patient.pid}`;
+  const dob = user?.date_of_birth ?? patient.dob;
+  const pid = user?.personal_number ?? patient.pid;
   return (
     <AppShell>
       <section className="max-w-5xl">
         <h1 className="[font-family:'EB_Garamond',ui-serif,Georgia,serif] text-3xl md:text-4xl leading-[1.05] font-medium italic text-[#7a1c2e] [font-feature-settings:'liga','dlig','onum']" style={{ textShadow: "0 1px 0 rgba(255,255,255,0.7), 1px 2px 0 rgba(180,150,220,0.35), 2px 4px 6px rgba(120,90,180,0.25), 3px 6px 14px rgba(120,90,180,0.18)" }}>
-          Personal Record № {patient.pid}
+          {displayName}
           <span className="text-foreground/60">.</span>
 
         </h1>
 
 
         <p className="mt-2 text-sm font-bold uppercase tracking-[0.2em]">
-          DOB {patient.dob} · {patient.sex} · Personal Record № {patient.pid}
+          DOB {dob} · Personal Record № {pid}
         </p>
       </section>
 
