@@ -1,0 +1,25 @@
+{
+  "name": "The Health Passport",
+  "short_name": "Health Passport",
+  "description": "A longitudinal health record in the NEJM tradition.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a1f3d",
+  "theme_color": "#0a1f3d",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

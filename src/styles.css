@@ -1,0 +1,250 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Health Passport design system
+ * - Very light flamingo pink background
+ * - Turquoise / aqua green boxes (dress color)
+ * - Bold black text everywhere for maximum contrast
+ * - NEJM-style serif typography
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-flamingo: var(--flamingo);
+  --color-flamingo-deep: var(--flamingo-deep);
+  --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
+  --color-ink: var(--ink);
+  --font-serif: "EB Garamond", "Sabon", "Garamond", Georgia, "Times New Roman", serif;
+  --font-sans: "EB Garamond", Georgia, serif;
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Very light flamingo pink */
+  --flamingo: oklch(0.982 0.022 28);
+  --flamingo-soft: oklch(0.99 0.014 28);
+  --flamingo-deep: oklch(0.93 0.05 28);
+
+  /* Turquoise aqua (dress color) */
+ --mint: oklch(0.88 0.055 195);
+ --mint-soft: oklch(0.95 0.03 195);
+ --mint-deep: oklch(0.78 0.08 195);
+
+  /* Match the deep warm brown used on dashboard box titles */
+  --ink: #321512;
+
+
+  --background: var(--flamingo);
+  --foreground: var(--ink);
+  --card: var(--mint);
+  --card-foreground: var(--ink);
+  --popover: oklch(0.99 0.005 60);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--mint);
+  --secondary: var(--mint);
+  --secondary-foreground: var(--ink);
+  --muted: var(--flamingo-soft);
+  --muted-foreground: oklch(0.2 0.01 0);
+  --accent: var(--mint-deep);
+  --accent-foreground: var(--ink);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.5 0.03 195);
+  --input: oklch(0.9 0.02 195);
+  --ring: var(--ink);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body {
+    background:
+      radial-gradient(1200px 800px at 8% -10%, color-mix(in oklab, var(--mint-soft) 40%, transparent), transparent 60%),
+      radial-gradient(1000px 700px at 100% 10%, color-mix(in oklab, var(--flamingo-deep) 35%, transparent), transparent 60%),
+      var(--flamingo-soft) !important;
+    color: var(--color-foreground);
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-feature-settings: "kern", "liga", "onum";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 700;
+    letter-spacing: 0.005em;
+    color: var(--color-foreground);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  p, span, li, td, th, a, label, div {
+    color: inherit;
+  }
+
+}
+
+/* 3D elevated "cloud" boxes — no outlines, soft mint→pink blend */
+.cloud-box {
+  position: relative;
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--mint) 90%, white 10%), transparent 60%),
+    radial-gradient(120% 90% at 100% 100%, color-mix(in oklab, var(--flamingo-deep) 30%, var(--mint) 70%), transparent 70%),
+    linear-gradient(160deg, var(--mint) 0%, color-mix(in oklab, var(--mint) 80%, var(--flamingo-soft) 20%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.85) inset,
+    0 -8px 18px rgba(255,255,255,0.35) inset,
+    0 10px 22px -10px rgba(20, 50, 60, 0.28),
+    0 28px 50px -18px rgba(20, 50, 60, 0.22);
+  transition: transform 220ms ease, box-shadow 220ms ease;
+  border: 0;
+}
+.cloud-box:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 -8px 18px rgba(255,255,255,0.4) inset,
+    0 14px 28px -10px rgba(20, 50, 60, 0.34),
+    0 40px 70px -22px rgba(20, 50, 60, 0.28);
+}
+
+.cloud-panel {
+  border-radius: 1rem;
+  background: linear-gradient(160deg, color-mix(in oklab, var(--mint) 55%, white 45%), color-mix(in oklab, var(--flamingo-soft) 60%, var(--mint) 40%));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.85) inset,
+    0 8px 20px -10px rgba(20, 50, 60, 0.2);
+  border: 0;
+}
+
+/* Dali surreal animations */
+@keyframes dali-melt {
+  0%, 100% { transform: translateY(0) skewY(0deg) scale(1); }
+  50% { transform: translateY(4px) skewY(-2deg) scale(1.03); }
+}
+@keyframes dali-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-6px) rotate(2deg); }
+}
+@keyframes dali-drip {
+  0% { transform: scaleY(1); transform-origin: top; }
+  50% { transform: scaleY(1.15); }
+  100% { transform: scaleY(1); }
+}
+@keyframes dali-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes dali-swirl {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.dali-melt { animation: dali-melt 6s ease-in-out infinite; transform-origin: center; }
+.dali-float { animation: dali-float 5s ease-in-out infinite; transform-origin: center; }
+.dali-drip { animation: dali-drip 4s ease-in-out infinite; }
+.dali-pulse { animation: dali-pulse 3s ease-in-out infinite; }
+.dali-swirl { animation: dali-swirl 18s linear infinite; transform-origin: center; }
+
+/* Editable document preview for medical-form samples */
+.form-document h1 { font-family: Georgia, "Times New Roman", serif; font-size: 18pt; font-weight: 800; margin: 14pt 0 6pt; color: #111; }
+.form-document h2 { font-family: Georgia, "Times New Roman", serif; font-size: 13pt; font-weight: 800; margin: 12pt 0 4pt; padding-bottom: 2pt; border-bottom: 1px solid #999; color: #111; }
+.form-document h3 { font-family: Georgia, "Times New Roman", serif; font-size: 12pt; font-weight: 700; margin: 10pt 0 3pt; color: #222; }
+.form-document h4 { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; font-weight: 700; margin: 8pt 0 2pt; color: #333; }
+.form-document p { margin: 6pt 0; }
+.form-document hr { border: 0; border-top: 1px solid #888; margin: 10pt 0; }
+.form-document ul, .form-document ol { padding-left: 22pt; margin: 4pt 0; }
+.form-document li { margin: 2pt 0; }
+.form-document table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 10.5pt; }
+.form-document th, .form-document td { border: 1px solid #bbb; padding: 5pt 7pt; vertical-align: top; text-align: left; }
+.form-document th { background: #eee; font-weight: 700; }
+.form-document strong { font-weight: 700; }
+.form-document em { font-style: italic; }
+.form-document code { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f3f3f3; padding: 0 3px; border-radius: 3px; font-size: 0.95em; }
+
+/* Starlight subspecialty tab — soft warm yellow-white, like stars in the night sky */
+.subspecialty-tab {
+  color: #6b5a2a;
+  background:
+    linear-gradient(135deg,
+      #fffbe6 0%,
+      #fff4c2 30%,
+      #fdebb0 60%,
+      #fff7d1 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.95),
+    inset 0 -1px 2px rgba(220,190,110,0.35),
+    0 2px 14px -4px rgba(245,220,140,0.75),
+    0 0 0 1px rgba(230,210,140,0.7);
+}
+.subspecialty-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255,240,170,0.7) 0%, transparent 40%),
+    radial-gradient(circle at 75% 60%, rgba(255,235,150,0.6) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(255,250,210,0.6) 0%, transparent 40%);
+  background-size: 180% 180%;
+  background-position: 0% 0%;
+  animation: impressionist-drift 9s ease-in-out infinite;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.subspecialty-tab::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg,
+      transparent 0%,
+      transparent 40%,
+      rgba(255,250,200,0.7) 50%,
+      transparent 60%,
+      transparent 100%);
+  background-size: 220% 100%;
+  background-position: 200% 0;
+  animation: impressionist-shimmer 5s linear infinite;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+@keyframes impressionist-drift {
+  0%, 100% { background-position: 0% 0%, 100% 50%, 50% 100%; }
+  50%      { background-position: 30% 40%, 60% 20%, 70% 70%; }
+}
+@keyframes impressionist-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -100% 0; }
+}
+
+
