@@ -69,6 +69,9 @@ Each dashboard loads with one call:
 - `GET /dashboard/doctor` — active grants (patients I can open), pending
   requests, my recent assessments, stats.
 
+> 📖 **[API_GUIDE.md](API_GUIDE.md)** — step-by-step walkthrough of all 51 endpoints with example payloads.
+> 📊 **[DIAGRAMS.md](DIAGRAMS.md)** — system overview, ER schema, consent flow, episode lifecycle (Mermaid, renders on GitHub).
+
 ## Endpoints
 
 | Method & path | Who | What |
