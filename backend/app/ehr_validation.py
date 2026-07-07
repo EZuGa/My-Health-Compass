@@ -80,7 +80,9 @@ def validate_visit(episode_type: str, started_at: datetime, ended_at: datetime |
     errors = []
     if episode_type == "inpatient":
         errors.append("Visits section does not exist for inpatient episodes")
-    if started_at and ended_at:
+    if not ended_at:
+        errors.append("'ended_at' (ვიზიტის დასრულების თარიღი და დრო) is mandatory for a visit")
+    elif started_at:
         if ended_at < started_at:
             errors.append("Visit end must be after visit start")
         elif ended_at - started_at > timedelta(hours=24):

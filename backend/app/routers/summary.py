@@ -107,16 +107,22 @@ class PatientInfoBlock(BaseModel):
     date_of_birth: date | None
     age: int | None
     blood_group: str | None
+    address_region: str | None
+    address_actual: str | None
     phone: str | None
     email: str
 
 
 class AnamnesisVitaeBlock(BaseModel):
-    """ცხოვრების ანამნეზი — immunizations, screenings, past diseases,
-    chronic conditions, surgeries, allergies, family/social history."""
+    """ცხოვრების ანამნეზი — mirrors the Summary List blocks: immunizations,
+    screenings, pregnancy statistics, past diseases, chronic conditions,
+    blood transfusions, surgeries, allergies, family/social history."""
     immunizations: list[ProfileItemOut]
     screenings: list[ProfileItemOut]
-    past_diseases_and_chronic: list[ProfileItemOut]
+    pregnancy_statistics: list[ProfileItemOut]
+    past_diseases: list[ProfileItemOut]
+    chronic_conditions: list[ProfileItemOut]
+    blood_transfusions: list[ProfileItemOut]
     surgeries: list[ProfileItemOut]
     allergies: list[ProfileItemOut]
     medications: list[ProfileItemOut]
@@ -179,13 +185,18 @@ def ehr_summary(
             date_of_birth=patient.date_of_birth,
             age=age,
             blood_group=patient.blood_group,
+            address_region=patient.address_region,
+            address_actual=patient.address_actual,
             phone=patient.phone,
             email=patient.email,
         ),
         anamnesis_vitae=AnamnesisVitaeBlock(
             immunizations=grouped.get("immunization", []),
             screenings=grouped.get("screening", []),
-            past_diseases_and_chronic=grouped.get("chronic_condition", []),
+            pregnancy_statistics=grouped.get("pregnancy", []),
+            past_diseases=grouped.get("past_disease", []),
+            chronic_conditions=grouped.get("chronic_condition", []),
+            blood_transfusions=grouped.get("blood_transfusion", []),
             surgeries=grouped.get("surgery", []),
             allergies=grouped.get("allergy", []),
             medications=grouped.get("medication", []),

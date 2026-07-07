@@ -41,6 +41,10 @@ ACTIVITY_TYPES = (
 PROFILE_ITEM_TYPES = (
     "allergy", "chronic_condition", "medication", "immunization",
     "surgery", "screening", "family_history", "social_history",
+    # Summary List anamnesis-vitae blocks:
+    "past_disease",       # გადატანილი დაავადებები (date, ICD10, clinical dx)
+    "blood_transfusion",  # სისხლის გადასხმა (component, clarification, date)
+    "pregnancy",          # ორსულობის სტატისტიკა (counts in detail)
 )
 
 
@@ -56,6 +60,8 @@ class User(Base):
     date_of_birth: Mapped[date | None] = mapped_column(Date)
     phone: Mapped[str | None] = mapped_column(String(30))
     blood_group: Mapped[str | None] = mapped_column(String(10))
+    address_region: Mapped[str | None] = mapped_column(String(255))   # მისამართი (რეგიონი)
+    address_actual: Mapped[str | None] = mapped_column(String(255))   # მისამართი (ფაქტიური)
     specialty: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

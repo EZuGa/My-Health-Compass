@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
     date_of_birth   DATE,
     phone           VARCHAR(30),
     blood_group     VARCHAR(10),                 -- სისხლის ჯგუფი და Rh-ფაქტორი
+    address_region  VARCHAR(255),                -- მისამართი (რეგიონი)
+    address_actual  VARCHAR(255),                -- მისამართი (ფაქტიური)
     specialty       VARCHAR(50),                 -- doctors only, e.g. 'cardiology'
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -176,7 +178,8 @@ CREATE TABLE IF NOT EXISTS profile_items (
     patient_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     item_type   VARCHAR(20) NOT NULL CHECK (item_type IN
                 ('allergy','chronic_condition','medication','immunization',
-                 'surgery','screening','family_history','social_history')),
+                 'surgery','screening','family_history','social_history',
+                 'past_disease','blood_transfusion','pregnancy')),
     name        VARCHAR(255) NOT NULL,        -- e.g. "Penicillin", "Hypertension"
     detail      TEXT,                         -- reaction, dose, clarification...
     icd10       VARCHAR(20),

@@ -27,7 +27,8 @@ with TestClient(app) as c:
     # ===== auth =====
     pid = c.post("/auth/register", json={
         "role": "patient", "email": "p@x.ge", "password": "secret1",
-        "full_name": "Nika", "personal_number": "01008012345"}).json()["id"]
+        "full_name": "Nika", "personal_number": "01008012345",
+        "address_region": "Tbilisi", "address_actual": "Rustaveli 1"}).json()["id"]
     c.post("/auth/register", json={"role": "doctor", "email": "d1@x.ge", "password": "secret1",
                                    "full_name": "Dr Cardio", "specialty": "cardiology"})
     c.post("/auth/register", json={"role": "doctor", "email": "d2@x.ge", "password": "secret1",
@@ -46,6 +47,7 @@ with TestClient(app) as c:
     r = c.get("/auth/me", headers=P)
     ok(r, 200)
     assert r.json()["role"] == "patient"
+    assert r.json()["address_region"] == "Tbilisi"
 
     # ===== categories & metric catalog =====
     r = c.get("/categories", headers=P)
@@ -101,9 +103,16 @@ with TestClient(app) as c:
                                                   "occurred_on": "2020-03-01"})
     ok(r, 201)
     item_id = r.json()["id"]
+    r = c.post("/profile/items", headers=P, json={"item_type": "past_disease", "name": "Pneumonia",
+                                                  "detail": "Recovered", "occurred_on": "2018-02-10"})
+    ok(r, 201, "past_disease item (Summary List block)")
+    r = c.post("/profile/items", headers=P, json={"item_type": "blood_transfusion",
+                                                  "name": "Packed red blood cells",
+                                                  "detail": "2 units", "occurred_on": "1999-08-21"})
+    ok(r, 201, "blood_transfusion item (Summary List block)")
     r = c.get(f"/patients/{pid}/profile", headers=P)
     ok(r, 200)
-    assert set(r.json().keys()) == {"allergy", "chronic_condition"}
+    assert set(r.json().keys()) == {"allergy", "chronic_condition", "past_disease", "blood_transfusion"}
 
     # ===== documents =====
     r = c.post("/documents", headers=P,
@@ -155,6 +164,14 @@ with TestClient(app) as c:
     r = c.post(f"/assessments/{eid}/visits", headers=D1,
                json={"started_at": "2026-07-01T10:00:00Z", "ended_at": "2026-07-01T12:00:00Z"})
     ok(r, 422, "visits section rejected for inpatient")
+    r = c.post(f"/assessments/{aid}/visits", headers=D1, json={"started_at": "2026-07-01T10:00:00Z"})
+    ok(r, 422, "visit without ended_at rejected (red field)")
+    r = c.post(f"/assessments/{aid}/visits", headers=D1, json={
+        "started_at": "2026-07-01T10:00:00Z", "ended_at": "2026-07-02T11:00:00Z"})
+    ok(r, 422, "visit longer than 24h rejected")
+    r = c.post(f"/assessments/{aid}/visits", headers=D1, json={
+        "started_at": "2026-07-01T10:00:00Z", "ended_at": "2026-07-01T11:00:00Z", "comment": "check-up"})
+    ok(r, 201, "visit added to outpatient episode")
     r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
         "activity_type": "consultation", "name": "Endo consult", "started_at": "2026-07-02T09:00:00Z",
         "care": "standard"})
@@ -258,7 +275,10 @@ with TestClient(app) as c:
     ok(r, 200, "ehr summary for granted doctor")
     s = r.json()
     assert s["patient"]["personal_number"] == "01008012345"
+    assert s["patient"]["address_region"] == "Tbilisi"
     assert [a["name"] for a in s["anamnesis_vitae"]["allergies"]] == ["Penicillin"]
+    assert [a["name"] for a in s["anamnesis_vitae"]["past_diseases"]] == ["Pneumonia"]
+    assert len(s["anamnesis_vitae"]["blood_transfusions"]) == 1
     assert s["accessible_categories"] == ["cardiology"], s["accessible_categories"]
     full = next(e for e in s["episodes"] if e["id"] == eid)
     assert full["bed_days"] == 3 and len(full["activities"]) == 3

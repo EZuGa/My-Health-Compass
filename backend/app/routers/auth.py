@@ -26,6 +26,8 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         date_of_birth=data.date_of_birth,
         phone=data.phone,
         blood_group=data.blood_group,
+        address_region=data.address_region,
+        address_actual=data.address_actual,
         specialty=data.specialty if data.role == "doctor" else None,
     )
     db.add(user)

@@ -17,6 +17,8 @@ class RegisterIn(BaseModel):
     date_of_birth: date | None = None
     phone: str | None = None
     blood_group: str | None = None
+    address_region: str | None = None
+    address_actual: str | None = None
     specialty: str | None = None  # required for doctors (validated in the route)
 
 
@@ -41,6 +43,8 @@ class UserOut(BaseModel):
     date_of_birth: date | None
     phone: str | None
     blood_group: str | None
+    address_region: str | None = None
+    address_actual: str | None = None
     specialty: str | None
 
 
@@ -193,6 +197,7 @@ class AssessmentOut(BaseModel):
     patient_id: int
     doctor_id: int
     doctor_name: str | None = None
+    doctor_personal_number: str | None = None   # Summary List: პასუხისმგებელი პირის პირადი ნომერი
     category: CategoryOut
     episode_type: str
     status: str = "open"
@@ -235,6 +240,7 @@ class CategoryHistoryOut(BaseModel):
 ProfileItemType = Literal[
     "allergy", "chronic_condition", "medication", "immunization",
     "surgery", "screening", "family_history", "social_history",
+    "past_disease", "blood_transfusion", "pregnancy",
 ]
 
 

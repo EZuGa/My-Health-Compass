@@ -71,5 +71,7 @@ def require_patient_readable(db: Session, viewer, patient_id: int):
 
 def to_assessment_out(a: Assessment) -> AssessmentOut:
     out = AssessmentOut.model_validate(a)
-    out.doctor_name = a.doctor.full_name if a.doctor else None
+    if a.doctor:
+        out.doctor_name = a.doctor.full_name
+        out.doctor_personal_number = a.doctor.personal_number
     return out

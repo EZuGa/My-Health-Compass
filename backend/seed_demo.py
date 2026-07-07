@@ -80,20 +80,23 @@ def seed():
     patients = [
         User(role="patient", email="nino@demo.ge", password_hash=pw, full_name="Nino Kapanadze",
              personal_number="01001011111", date_of_birth=datetime(1985, 3, 12).date(),
-             blood_group="A+", phone="+995 555 111 111"),
+             blood_group="A+", phone="+995 555 111 111",
+             address_region="Tbilisi", address_actual="Vazha-Pshavela Ave 27, apt 14, Tbilisi"),
         User(role="patient", email="giorgi@demo.ge", password_hash=pw, full_name="Giorgi Melikidze",
              personal_number="01001022222", date_of_birth=datetime(1972, 11, 3).date(),
-             blood_group="O-", phone="+995 555 222 222"),
+             blood_group="O-", phone="+995 555 222 222",
+             address_region="Imereti", address_actual="Rustaveli St 8, Kutaisi"),
         User(role="patient", email="mariam@demo.ge", password_hash=pw, full_name="Mariam Tsiklauri",
              personal_number="01001033333", date_of_birth=datetime(1996, 7, 25).date(),
-             blood_group="B+", phone="+995 555 333 333"),
+             blood_group="B+", phone="+995 555 333 333",
+             address_region="Tbilisi", address_actual="Chavchavadze Ave 45, Tbilisi"),
     ]
     doctors = [
-        User(role="doctor", email="cardio@demo.ge", password_hash=pw,
+        User(role="doctor", email="cardio@demo.ge", password_hash=pw, personal_number="01005044444",
              full_name="Dr. Levan Beridze", specialty="cardiology"),
-        User(role="doctor", email="neuro@demo.ge", password_hash=pw,
+        User(role="doctor", email="neuro@demo.ge", password_hash=pw, personal_number="01005055555",
              full_name="Dr. Tamar Gelashvili", specialty="neurology"),
-        User(role="doctor", email="endo@demo.ge", password_hash=pw,
+        User(role="doctor", email="endo@demo.ge", password_hash=pw, personal_number="01005066666",
              full_name="Dr. Irakli Japaridze", specialty="endocrinology"),
     ]
     db.add_all(patients + doctors)
@@ -280,13 +283,17 @@ def seed():
         (patients[0], "family_history", "Mother — type 2 diabetes", None, None),
         (patients[0], "social_history", "Never smoker; ~3 glasses wine/week", None, None),
         (patients[0], "screening", "Mammography — BI-RADS 1", "Normal", "2025-04-12"),
+        (patients[0], "past_disease", "Pneumonia", "Community-acquired, fully recovered", "2018-02-10"),
         (patients[1], "chronic_condition", "Hypertension", None, "2015-06-01"),
         (patients[1], "chronic_condition", "Type 2 diabetes", None, "2024-02-15"),
         (patients[1], "medication", "Metformin 850mg", "2x daily", None),
         (patients[1], "medication", "Atorvastatin 20mg", "1x daily, evening", None),
         (patients[1], "surgery", "Appendectomy", None, "1999-08-20"),
+        (patients[1], "past_disease", "Viral hepatitis A", "Full recovery", "1990-05-01"),
+        (patients[1], "blood_transfusion", "Packed red blood cells", "2 units after appendectomy bleeding", "1999-08-21"),
         (patients[2], "allergy", "Pollen (seasonal)", "Rhinitis", None),
         (patients[2], "family_history", "Migraine (mother)", None, None),
+        (patients[2], "pregnancy", "Pregnancy statistics", "Pregnancies: 1, Births: 1 (2023, uncomplicated)", "2023-09-14"),
     ]
     for p, t, name, detail, when in profile_data:
         db.add(ProfileItem(
