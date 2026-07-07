@@ -38,7 +38,25 @@ post-discharge recommendations, outcome, attached images.
    Demo logins (password `demo123`): patients `nino@demo.ge`, `giorgi@demo.ge`,
    `mariam@demo.ge`; doctors `cardio@demo.ge`, `neuro@demo.ge`, `endo@demo.ge`.
 
-6. **Tests**: `python tests/smoke_test.py` (57 end-to-end checks, uses SQLite).
+6. **Tests**: `python tests/smoke_test.py` (77 end-to-end checks, uses SQLite).
+
+## MoH EHR spec (the two Excel files, in `docs/`)
+
+- **`EHR_SectionsFields (2).xlsx`** — the *write* form: every section/field a
+  doctor must fill per episode type (inpatient / day hospital / emergency
+  outpatient / outpatient); red-font fields are mandatory. Implemented as the
+  episode lifecycle: `POST /assessments` opens a draft, repeatable records go
+  to `/diagnoses` `/visits` `/activities` (validated per record against
+  `app/ehr_validation.py`), and `POST /assessments/{id}/complete` enforces the
+  episode-level red-mandatory matrix (e.g. transportation type for stationary
+  episodes, ≥1 clinical diagnosis + examination sheet for inpatient, exactly
+  one final main diagnosis with disease course, episode result, discharge
+  date) and auto-computes bed-days / case number.
+- **`Summary List for History 10 EHRInPatient.xls`** — the *read* view a
+  doctor gets of a patient's record. Implemented as
+  `GET /doctors/patients/{id}/ehr-summary`: history header + patient info +
+  anamnesis vitae (immunizations, screenings, chronic conditions, surgeries,
+  allergies...) + full episodes, scoped to the doctor's active grants.
 
 ## Two dashboards
 
@@ -57,9 +75,15 @@ Each dashboard loads with one call:
 |---|---|---|
 | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | anyone | JWT auth; role `patient` or `doctor` |
 | `GET /categories`, `GET /categories/{code}/metrics` | both | Categories and their metric fields (pulse & BP → cardiology, ...) |
-| `POST /assessments` | doctor | Submit assessment (ICD-10, complaints, treatment, recommendations...) |
+| `POST /assessments` | doctor | Open an episode (MoH EHR header + anamnesis; nested diagnoses/visits/activities accepted inline) |
+| `PATCH /assessments/{id}` | doctor | Update header / anamnesis / outcome fields while the episode is open |
+| `POST /assessments/{id}/diagnoses` | doctor | Add diagnosis record: preliminary / clinical / final_main / final_comorbidity / final_complication |
+| `POST /assessments/{id}/visits` | doctor | Add a visit (non-inpatient episodes, ≤ 24h each) |
+| `POST /assessments/{id}/activities` | doctor | Add treatment-process / post-discharge record (labs, consultations, surgery, transfusion, prescriptions...) |
+| `POST /assessments/{id}/complete` | doctor | Close the episode — runs the **red-mandatory checks** per episode type, computes bed-days, assigns case number |
+| `GET /assessments/{id}`, `GET /assessments/mine` | doctor | Own episodes with full nested records |
 | `POST /assessments/{id}/images` | doctor | Attach image/PDF/DICOM to own assessment |
-| `GET /assessments/mine` | doctor | Own submitted assessments |
+| `GET /doctors/patients/{id}/ehr-summary` | doctor* | Full patient read view laid out after the MoH "Summary List for History" spec (patient info, anamnesis vitae, episodes) |
 | `GET /patients/me/history[/{category}]` | patient | Own history grouped / per category with images |
 | `POST /access-requests` → `/approve` `/deny` `/revoke` | doctor → patient | Consent flow; approved grant lasts `ACCESS_GRANT_DAYS` (30) |
 | `GET /doctors/patients/{id}/history/{category}` | doctor | Patient history — 403 without an approved, unexpired grant |

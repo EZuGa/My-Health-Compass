@@ -54,8 +54,8 @@ with TestClient(app) as c:
     r = c.get("/categories/cardiology/metrics", headers=P)
     ok(r, 200)
     codes = {m["code"] for m in r.json()}
-    assert codes == {"pulse", "blood_pressure_systolic", "blood_pressure_diastolic",
-                     "resting_heart_rate", "hrv", "vo2max"}, codes
+    assert {"pulse", "blood_pressure_systolic", "blood_pressure_diastolic",
+            "resting_heart_rate", "hrv", "ldl_cholesterol"} <= codes, codes
     r = c.get("/categories/nope/metrics", headers=P)
     ok(r, 404, "unknown category")
 
@@ -144,6 +144,88 @@ with TestClient(app) as c:
     ok(r, 200)
     assert r.json()[0]["images"][0]["description"] == "Echo"
 
+    # ===== full EHR episode (MoH spec: red-mandatory fields + completion) =====
+    r = c.post("/assessments", headers=D1, json={
+        "patient_id": pid, "category_code": "cardiology", "episode_type": "inpatient",
+        "visit_date": "2026-07-01T10:00:00Z", "complaints": "Chest pain at rest"})
+    ok(r, 201, "open inpatient episode (draft)")
+    eid = r.json()["id"]
+    assert r.json()["status"] == "open"
+
+    r = c.post(f"/assessments/{eid}/visits", headers=D1,
+               json={"started_at": "2026-07-01T10:00:00Z", "ended_at": "2026-07-01T12:00:00Z"})
+    ok(r, 422, "visits section rejected for inpatient")
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "consultation", "name": "Endo consult", "started_at": "2026-07-02T09:00:00Z",
+        "care": "standard"})
+    ok(r, 422, "consultation without specialty/consultant rejected")
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "examination_note", "started_at": "2026-07-01T12:00:00Z",
+        "result_note": "Stable on nitrates"})
+    ok(r, 422, "examination note without care rejected (red for inpatient)")
+    r = c.post(f"/assessments/{eid}/diagnoses", headers=D1,
+               json={"kind": "clinical", "icd10_code": "I20.0"})
+    ok(r, 422, "clinical diagnosis without established_at rejected")
+    r = c.post(f"/assessments/{eid}/diagnoses", headers=D1,
+               json={"kind": "final_main", "icd10_code": "I20.0"})
+    ok(r, 422, "final diagnosis without disease_course rejected")
+
+    r = c.post(f"/assessments/{eid}/complete", headers=D1)
+    ok(r, 422, "completion blocked while mandatory fields missing")
+    missing = " ".join(r.json()["detail"])
+    for needle in ["medical_record_number", "discharge_at", "transportation_type",
+                   "clinical diagnosis", "final main diagnosis", "episode_result"]:
+        assert needle in missing, f"expected '{needle}' in completion errors: {missing}"
+
+    r = c.patch(f"/assessments/{eid}", headers=D1, json={
+        "medical_record_number": "MRN-777", "first_visit_end_at": "2026-07-01T11:00:00Z",
+        "discharge_at": "2026-07-04T12:00:00Z", "transportation_type": "ambulance",
+        "hospitalization_type": "emergency", "hospitalized_for_this_disease": True,
+        "episode_result": "discharged", "disease_outcome": "improvement"})
+    ok(r, 200, "patch episode header/outcome")
+    c.post(f"/assessments/{eid}/diagnoses", headers=D1, json={
+        "kind": "clinical", "icd10_code": "I20.0", "established_at": "2026-07-01T16:00:00Z"})
+    r = c.post(f"/assessments/{eid}/diagnoses", headers=D1, json={
+        "kind": "final_main", "icd10_code": "I20.0", "disease_course": "acute"})
+    ok(r, 201, "final main diagnosis added")
+    r = c.post(f"/assessments/{eid}/diagnoses", headers=D1, json={
+        "kind": "final_main", "icd10_code": "I21.0", "disease_course": "acute"})
+    ok(r, 409, "second final main diagnosis rejected")
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "examination_note", "care": "standard",
+        "started_at": "2026-07-01T12:00:00Z", "result_note": "Stable on nitrates"})
+    ok(r, 201, "examination note added")
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "consultation", "name": "Endo consult", "care": "standard",
+        "started_at": "2026-07-02T09:00:00Z",
+        "details": {"specialty": "endocrinology", "consultant_name": "Dr. J"}})
+    ok(r, 201, "consultation with details added")
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "discharge_prescription", "name": "Atorvastatin 40mg",
+        "details": {"form": "tablet", "substitution_allowed": 1, "quantity": 30}})
+    ok(r, 201, "discharge prescription added")
+    r = c.post(f"/assessments/{eid}/activities", headers=D2, json={
+        "activity_type": "lab_test", "name": "x", "result_date": "2026-07-02T09:00:00Z"})
+    ok(r, 403, "other doctor cannot modify the episode")
+
+    r = c.post(f"/assessments/{eid}/complete", headers=D1)
+    ok(r, 200, "episode completed")
+    assert r.json()["bed_days"] == 3, r.json()
+    r = c.get(f"/assessments/{eid}", headers=D1)
+    ok(r, 200, "full episode readback")
+    j = r.json()
+    assert j["status"] == "completed" and j["case_number"]
+    assert {d["kind"] for d in j["diagnoses"]} == {"clinical", "final_main"}
+    assert {a["activity_type"] for a in j["activities"]} == {
+        "examination_note", "consultation", "discharge_prescription"}
+    r = c.post(f"/assessments/{eid}/activities", headers=D1, json={
+        "activity_type": "lab_test", "name": "x", "result_date": "2026-07-02T09:00:00Z"})
+    ok(r, 409, "completed episode is locked")
+    r = c.get("/patients/me/history/cardiology", headers=P)
+    ok(r, 200, "patient sees nested episode records")
+    ep = next(a for a in r.json() if a["id"] == eid)
+    assert len(ep["diagnoses"]) == 2 and len(ep["activities"]) == 3
+
     # ===== consent flow =====
     for path in [f"/doctors/patients/{pid}/history/cardiology", f"/patients/{pid}/profile",
                  f"/patients/{pid}/observations", f"/patients/{pid}/timeline", f"/images/{img_id}"]:
@@ -168,6 +250,18 @@ with TestClient(app) as c:
     r = c.get(f"/doctors/patients/{pid}/history/cardiology", headers=D1)
     ok(r, 200, "granted category history")
     assert r.json()[0]["clinical_diagnosis_icd10"] == "I20.8"
+
+    # ===== EHR summary (Summary List for History layout, doctor read view) =====
+    r = c.get(f"/doctors/patients/{pid}/ehr-summary", headers=D2)
+    ok(r, 403, "ehr summary blocked without grant")
+    r = c.get(f"/doctors/patients/{pid}/ehr-summary", headers=D1)
+    ok(r, 200, "ehr summary for granted doctor")
+    s = r.json()
+    assert s["patient"]["personal_number"] == "01008012345"
+    assert [a["name"] for a in s["anamnesis_vitae"]["allergies"]] == ["Penicillin"]
+    assert s["accessible_categories"] == ["cardiology"], s["accessible_categories"]
+    full = next(e for e in s["episodes"] if e["id"] == eid)
+    assert full["bed_days"] == 3 and len(full["activities"]) == 3
     r = c.get(f"/doctors/patients/{pid}/history/neurology", headers=D1)
     ok(r, 403, "other category still blocked")
     r = c.get(f"/patients/{pid}/observations?category=cardiology", headers=D1)
@@ -183,7 +277,7 @@ with TestClient(app) as c:
     r = c.get(f"/patients/{pid}/timeline", headers=D1)
     ok(r, 200, "doctor timeline scoped")
     cats = [e["category_code"] for e in r.json() if e["event_type"] == "assessment"]
-    assert cats == ["cardiology"], cats
+    assert cats and set(cats) == {"cardiology"}, cats
     types = {e["event_type"] for e in c.get(f"/patients/{pid}/timeline", headers=P).json()}
     assert types == {"assessment", "observation", "document", "profile_item"}, types
 
@@ -248,7 +342,7 @@ with TestClient(app) as c:
     d = r.json()
     assert d["user"]["specialty"] == "cardiology"
     assert len(d["active_grants"]) == 1 and d["active_grants"][0]["patient_name"] == "Nika"
-    assert d["assessment_count"] == 1 and d["patient_count"] == 1
+    assert d["assessment_count"] == 2 and d["patient_count"] == 1
     r = c.get("/dashboard/patient", headers=D1)
     ok(r, 403, "doctor blocked from patient dashboard")
 

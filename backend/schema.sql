@@ -51,20 +51,95 @@ CREATE TABLE IF NOT EXISTS assessments (
     episode_type            VARCHAR(30) NOT NULL DEFAULT 'outpatient'
                             CHECK (episode_type IN
                               ('inpatient','day_hospital','emergency_outpatient','outpatient')),
-    visit_date              TIMESTAMPTZ NOT NULL DEFAULT now(),     -- ვიზიტის თარიღი
-    complaints              TEXT,          -- ჩივილები/სიმპტომები/მოკლე ანამნეზი
+    status                  VARCHAR(10) NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open','completed')),
+    -- სამედიცინო ჩანაწერების მონაცემები (medical record header)
+    medical_record_number   VARCHAR(50),   -- სამედიცინო ბარათის ისტორიის ნომერი [red]
+    visit_date              TIMESTAMPTZ NOT NULL DEFAULT now(),  -- პაციენტის შემოსვლის თარიღი და დრო [red]
+    first_visit_end_at      TIMESTAMPTZ,   -- პირველი ვიზიტის დასრულების თარიღი და დრო [red @completion]
+    discharge_at            TIMESTAMPTZ,   -- პაციენტის გაწერის თარიღი და დრო [red @completion]
+    case_number             VARCHAR(50),   -- ქეისის ნომერი (auto-filled at completion)
+    -- დაავადების ანამნეზი (disease anamnesis)
+    transportation_type     VARCHAR(50),   -- ტრანსპორტირების სახეობა [red: inpatient/day hospital]
+    hospitalization_type    VARCHAR(100),  -- შემთხვევის/ჰოსპიტალიზაციის ტიპი [red]
+    complaints              TEXT,          -- ჩივილები/სიმპტომები/მოკლე ანამნეზი [red]
+    hospitalized_for_this_disease BOOLEAN, -- ჰოსპიტალიზებული ამ დაავადების გამო [red: inpatient]
+    referring_institution   VARCHAR(255),  -- გამომგზავნი დაწესებულება (რეჰოსპიტალიზაცია)
+    referral_date           DATE,          -- ექიმთან/დაწესებულებაში მიმართვის თარიღი
+    -- legacy single-value diagnosis fields (repeatable records: assessment_diagnoses)
     preliminary_diagnosis_icd10 VARCHAR(20),   -- წინასწარი დიაგნოზი (ICD-10)
     clinical_diagnosis_icd10    VARCHAR(20),   -- კლინიკური დიაგნოზი (ICD-10)
     final_diagnosis_icd10       VARCHAR(20),   -- დასკვნითი (ძირითადი) დიაგნოზი (ICD-10)
     diagnosis_description   TEXT,          -- დიაგნოზის აღწერა
     treatment_notes         TEXT,          -- მკურნალობის პროცესი / ექიმის ჩანაწერი
     recommendations         TEXT,          -- გაწერის შემდგომი რეკომენდაციები
-    outcome                 TEXT,          -- ეპიზოდის შედეგი / დაავადების გამოსავალი
+    outcome                 TEXT,          -- free-text outcome (legacy)
+    -- ეპიზოდის გამოსავალი (episode outcome)
+    episode_result          VARCHAR(100),  -- ეპიზოდის შედეგი [red]
+    disease_outcome         VARCHAR(100),  -- დაავადების გამოსავალი [red unless death]
+    outcome_comment         TEXT,          -- ექიმის დაზუსტება/კომენტარი
+    bed_days                INT,           -- გატარებული საწოლდღეები (auto, inpatient)
+    completed_at            TIMESTAMPTZ,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS ix_assessments_patient_category
     ON assessments (patient_id, category_id);
+
+-- Repeatable diagnosis records (წინასწარი / კლინიკური / დასკვნითი დიაგნოზები).
+-- The spec requires exactly one 'final_main' per episode (enforced in the API).
+CREATE TABLE IF NOT EXISTS assessment_diagnoses (
+    id              SERIAL PRIMARY KEY,
+    assessment_id   INT NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+    kind            VARCHAR(20) NOT NULL CHECK (kind IN
+                      ('preliminary','clinical','final_main','final_comorbidity','final_complication')),
+    icd10_code      VARCHAR(20) NOT NULL,  -- დაავადება (ICD-10) [red]
+    description     TEXT,
+    established_at  TIMESTAMPTZ,           -- დადგენის თარიღი [red: clinical]
+    disease_course  VARCHAR(100),          -- ავადმყოფობის მიმდინარეობა [red: final_*]
+    refined_icd10   VARCHAR(20)            -- დაავადება (ICD-10) დაზუსტებული
+);
+
+CREATE INDEX IF NOT EXISTS ix_assessment_diagnoses_assessment
+    ON assessment_diagnoses (assessment_id);
+
+-- განხორციელებული ვიზიტები — repeatable visits (non-inpatient episodes, ≤24h each)
+CREATE TABLE IF NOT EXISTS assessment_visits (
+    id              SERIAL PRIMARY KEY,
+    assessment_id   INT NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+    started_at      TIMESTAMPTZ NOT NULL,  -- ვიზიტის დაწყების თარიღი და დრო [red]
+    ended_at        TIMESTAMPTZ,           -- ვიზიტის დასრულების თარიღი და დრო [red]
+    comment         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_assessment_visits_assessment
+    ON assessment_visits (assessment_id);
+
+-- Treatment-process and post-discharge records, one generic table:
+-- examination_note | observation | diagnostic_exam | lab_test | consultation |
+-- accompanying_activity | other_recommendation | prescription | blood_transfusion |
+-- intensive_care | anesthesia | operation_protocol | surgical_intervention |
+-- histomorphology | discharge_* . Per-type mandatory rules: app/ehr_validation.py.
+CREATE TABLE IF NOT EXISTS assessment_activities (
+    id              SERIAL PRIMARY KEY,
+    assessment_id   INT NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+    activity_type   VARCHAR(40) NOT NULL,
+    name            VARCHAR(255),          -- NCSP / lab / drug / activity name
+    ncsp_code       VARCHAR(30),
+    icd10_code      VARCHAR(20),
+    care            VARCHAR(100),          -- მოვლა / მოვლის დონე
+    started_at      TIMESTAMPTZ,
+    ended_at        TIMESTAMPTZ,
+    result_date     TIMESTAMPTZ,           -- შედეგის მიღების თარიღი
+    result_note     TEXT,                  -- აქტივობის შედეგი / ექიმის კომენტარი / ოქმი
+    details         JSONB,                 -- extras: specialty, consultant_name, blood_component,
+                                           -- quantity_ml, quantity, operation_number, form,
+                                           -- substitution_allowed, prescription_number ...
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_assessment_activities_assessment
+    ON assessment_activities (assessment_id, activity_type);
 
 -- Images / files attached to an assessment (X-rays, echo images, lab scans...)
 CREATE TABLE IF NOT EXISTS assessment_images (
@@ -114,12 +189,17 @@ CREATE INDEX IF NOT EXISTS ix_profile_items_patient ON profile_items (patient_id
 -- Catalog of known metric fields, one or more per category.
 -- Used by the AI intake to map free text to structured metrics.
 CREATE TABLE IF NOT EXISTS category_metrics (
-    id          SERIAL PRIMARY KEY,
-    category_id INT NOT NULL REFERENCES categories(id),
-    code        VARCHAR(100) NOT NULL UNIQUE,   -- e.g. 'pulse', 'blood_pressure_systolic'
-    name        VARCHAR(150) NOT NULL,
-    unit        VARCHAR(30),
-    box         VARCHAR(50)                     -- dashboard box (heart, metabolic, ...)
+    id               SERIAL PRIMARY KEY,
+    category_id      INT NOT NULL REFERENCES categories(id),
+    code             VARCHAR(100) NOT NULL UNIQUE,  -- e.g. 'pulse', 'blood_pressure_systolic'
+    name             VARCHAR(150) NOT NULL,
+    unit             VARCHAR(30),
+    box              VARCHAR(50),                   -- dashboard box (heart, metabolic, ...)
+    reference        VARCHAR(50),                   -- e.g. '<120', '60–80'
+    range_low        DOUBLE PRECISION,              -- normal-range shading
+    range_high       DOUBLE PRECISION,
+    modality         VARCHAR(20),                   -- vital | lab | wearable | score | imaging | ecg
+    diagnostic_group VARCHAR(50)                    -- Diagnostic Data grouping
 );
 
 INSERT INTO category_metrics (category_id, code, name, unit, box)
@@ -194,5 +274,19 @@ CREATE TABLE IF NOT EXISTS patient_documents (
 );
 
 CREATE INDEX IF NOT EXISTS ix_patient_documents_patient ON patient_documents (patient_id);
+
+-- Patient-owned calendar: appointments, reminders, medication schedule
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id          SERIAL PRIMARY KEY,
+    patient_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind        VARCHAR(20) NOT NULL CHECK (kind IN ('appointment','reminder','medication')),
+    title       VARCHAR(255) NOT NULL,
+    event_date  DATE NOT NULL,
+    event_time  VARCHAR(10),            -- 'HH:MM'
+    detail      TEXT,                   -- location / notes / dose schedule
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_calendar_patient_date ON calendar_events (patient_id, event_date);
 
 COMMIT;

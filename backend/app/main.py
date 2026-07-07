@@ -6,8 +6,8 @@ from .database import Base, SessionLocal, engine
 from .metrics_catalog import METRICS_SEED
 from .models import Category, CategoryMetric
 from .routers import (
-    access, assessments, auth, dashboard, documents, history, intake,
-    patient_data, summary, timeline, wearables,
+    access, assessments, auth, calendar, catalog, dashboard, documents,
+    history, intake, patient_data, summary, timeline, wearables,
 )
 
 DEFAULT_CATEGORIES = [
@@ -57,10 +57,14 @@ def init_db():
 
         categories = {c.code: c.id for c in db.scalars(select(Category))}
         existing_metrics = {m.code for m in db.scalars(select(CategoryMetric))}
-        for cat_code, code, name, unit, box in METRICS_SEED:
-            if code not in existing_metrics and cat_code in categories:
+        for m in METRICS_SEED:
+            if m["code"] not in existing_metrics and m["category"] in categories:
                 db.add(CategoryMetric(
-                    category_id=categories[cat_code], code=code, name=name, unit=unit, box=box,
+                    category_id=categories[m["category"]],
+                    code=m["code"], name=m["name"], unit=m["unit"], box=m["box"],
+                    reference=m["reference"], range_low=m["range_low"],
+                    range_high=m["range_high"], modality=m["modality"],
+                    diagnostic_group=m["diagnostic_group"],
                 ))
         db.commit()
 
@@ -81,3 +85,5 @@ app.include_router(intake.router)
 app.include_router(wearables.router)
 app.include_router(summary.router)
 app.include_router(dashboard.router)
+app.include_router(catalog.router)
+app.include_router(calendar.router)

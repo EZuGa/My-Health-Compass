@@ -1,13 +1,15 @@
-"""Populate the database with demo data (100+ records).
+"""Populate the database with demo data (everything the frontend renders).
 
 Run from backend/:  python seed_demo.py
 Uses DATABASE_URL from .env / environment (works with PostgreSQL or SQLite).
 
-Creates: 3 patients, 3 doctors, wearable observation time series (30 days),
-chat-intake vitals, assessments with the Georgian-EHR fields, profile items
-(allergies, meds, chronic conditions, immunizations), and access grants.
-All demo accounts use password: demo123
+Creates: 3 patients, 3 doctors, the full metric catalog, a weekly observation
+series for every catalog metric (so every dashboard chart has data), wearable +
+chat vitals, assessments (Georgian-EHR fields), a rich medical history (profile
+items), calendar events (appointments / reminders / medication schedule), and
+access grants. All demo accounts use password: demo123
 """
+import math
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -18,19 +20,39 @@ from app.database import Base, SessionLocal, engine
 from app.main import DEFAULT_CATEGORIES
 from app.metrics_catalog import METRICS_SEED
 from app.models import (
-    AccessRequest, Assessment, Category, CategoryMetric, Observation,
-    ProfileItem, User,
+    AccessRequest, Assessment, AssessmentActivity, AssessmentDiagnosis, AssessmentVisit,
+    CalendarEvent, Category, CategoryMetric, Observation, ProfileItem, User,
 )
 
 random.seed(42)
 NOW = datetime.now(timezone.utc)
+TODAY = NOW.date()
+
+
+def metric_series(m, n=14):
+    """Deterministic weekly series around a metric's normal range."""
+    lo, hi = m["range_low"], m["range_high"]
+    if lo is not None and hi is not None and hi > lo:
+        base = (lo + hi) / 2
+        jitter = max((hi - lo) * 0.10, 0.01)
+    elif lo is not None and hi is not None:  # range like [0,0] (tobacco)
+        base, jitter = lo, 0.0
+    else:
+        base, jitter = {"weight": 71.5}.get(m["code"], 50.0), 1.0
+    pts = []
+    for i in range(n):
+        ts = NOW - timedelta(days=(n - 1 - i) * 7)
+        val = base + (math.sin(i * 1.3) + math.cos(i * 2.7) * 0.5) * jitter
+        digits = 0 if (hi and hi > 200) else 1 if (hi and hi > 5) else 2
+        pts.append((ts, round(val, digits)))
+    return pts
 
 
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    # categories + metric catalog (same as app startup, so the script is standalone)
+    # ---- categories + metric catalog (mirrors app startup so this is standalone) ----
     existing = {c.code for c in db.scalars(select(Category))}
     for code, name in DEFAULT_CATEGORIES:
         if code not in existing:
@@ -38,12 +60,16 @@ def seed():
     db.commit()
     categories = {c.code: c for c in db.scalars(select(Category))}
     existing_metrics = {m.code for m in db.scalars(select(CategoryMetric))}
-    for cat_code, code, name, unit, box in METRICS_SEED:
-        if code not in existing_metrics:
-            db.add(CategoryMetric(category_id=categories[cat_code].id,
-                                  code=code, name=name, unit=unit, box=box))
+    for m in METRICS_SEED:
+        if m["code"] not in existing_metrics and m["category"] in categories:
+            db.add(CategoryMetric(
+                category_id=categories[m["category"]].id,
+                code=m["code"], name=m["name"], unit=m["unit"], box=m["box"],
+                reference=m["reference"], range_low=m["range_low"],
+                range_high=m["range_high"], modality=m["modality"],
+                diagnostic_group=m["diagnostic_group"],
+            ))
     db.commit()
-    metrics = {m.code: m for m in db.scalars(select(CategoryMetric))}
 
     if db.scalar(select(func.count(User.id)).where(User.email.like("%@demo.ge"))):
         print("Demo data already present — nothing to do.")
@@ -76,43 +102,40 @@ def seed():
         db.refresh(u)
 
     counts = {"users": len(patients) + len(doctors)}
+    metrics = {m.code: m for m in db.scalars(select(CategoryMetric))}
 
-    # ---- wearable time series: 30 days of resting HR + steps + sleep for patient 1 ----
+    # ---- full observation series: every catalog metric for patient 1 (so every
+    #      dashboard box + Diagnostic Data chart has real data) ----
     obs = 0
-    for day in range(30):
-        ts = NOW - timedelta(days=29 - day)
-        for code, base, spread, src in [
-            ("resting_heart_rate", 62, 6, "apple_health"),
-            ("steps", 8200, 3500, "apple_health"),
-            ("sleep_hours", 7.1, 1.2, "whoop"),
-        ]:
-            m = metrics[code]
+    for mseed in METRICS_SEED:
+        cm = metrics.get(mseed["code"])
+        if cm is None:
+            continue
+        source = "wearable" if mseed["modality"] == "wearable" else (
+            "lab" if mseed["modality"] == "lab" else "manual")
+        for ts, val in metric_series(mseed):
             db.add(Observation(
                 patient_id=patients[0].id, recorded_by=patients[0].id,
-                category_id=m.category_id, box=m.box, metric=code,
-                value_num=round(base + random.uniform(-spread, spread), 1),
-                unit=m.unit, observed_at=ts.replace(hour=7, minute=0),
-                source_kind="wearable", source_label=src,
+                category_id=cm.category_id, box=cm.box or "general", metric=cm.code,
+                value_num=val, unit=cm.unit, observed_at=ts,
+                source_kind=source, source_label=source,
             ))
             obs += 1
 
-    # ---- chat-intake style vitals for patients 2 and 3 ----
-    for p, series in [
-        (patients[1], [("blood_pressure_systolic", 145, 12), ("blood_pressure_diastolic", 92, 8),
-                       ("pulse", 78, 8), ("blood_glucose", 7.4, 1.2)]),
-        (patients[2], [("pulse", 66, 6), ("temperature", 36.7, 0.4), ("weight", 58.5, 0.8)]),
+    # a lighter set for patients 2 and 3 so their dashboards aren't empty
+    for p, codes in [
+        (patients[1], ["blood_pressure_systolic", "blood_pressure_diastolic", "hba1c", "ldl_cholesterol"]),
+        (patients[2], ["pulse", "weight", "steps", "sleep_hours"]),
     ]:
-        for week in range(4):
-            ts = NOW - timedelta(days=27 - week * 7, hours=random.randint(0, 8))
-            for code, base, spread in series:
-                m = metrics[code]
+        for code in codes:
+            cm = metrics.get(code)
+            if not cm:
+                continue
+            for ts, val in metric_series({**next(m for m in METRICS_SEED if m["code"] == code)}, n=8):
                 db.add(Observation(
-                    patient_id=p.id, recorded_by=p.id,
-                    category_id=m.category_id, box=m.box, metric=code,
-                    value_num=round(base + random.uniform(-spread, spread), 1),
-                    unit=m.unit, observed_at=ts,
-                    source_kind="chat", source_label="AI intake",
-                    note="demo: reported via chat",
+                    patient_id=p.id, recorded_by=p.id, category_id=cm.category_id,
+                    box=cm.box or "general", metric=cm.code, value_num=val, unit=cm.unit,
+                    observed_at=ts, source_kind="chat", source_label="AI intake",
                 ))
                 obs += 1
     counts["observations"] = obs
@@ -139,21 +162,124 @@ def seed():
          "Migraine diary; avoid triggers; neurologist follow-up if >2 attacks/month"),
     ]
     for i, (p, d, cat, ep, complaints, icd, desc, notes, rec) in enumerate(assessments_data):
-        db.add(Assessment(
+        admitted = NOW - timedelta(days=60 - i * 9)
+        a = Assessment(
             patient_id=p.id, doctor_id=d.id, category_id=categories[cat].id,
-            episode_type=ep, visit_date=NOW - timedelta(days=60 - i * 9),
+            episode_type=ep, visit_date=admitted,
+            status="completed", completed_at=admitted + timedelta(days=1),
+            medical_record_number=f"MRN-2026-{1000 + i}",
+            case_number=f"CASE-2026-{1000 + i}",
+            first_visit_end_at=admitted + timedelta(hours=1),
+            discharge_at=admitted + timedelta(days=3 if ep == "inpatient" else 0, hours=2),
+            hospitalization_type="გეგმიური (planned)" if ep != "emergency_outpatient" else "გადაუდებელი (emergency)",
             complaints=complaints, clinical_diagnosis_icd10=icd,
             final_diagnosis_icd10=icd, diagnosis_description=desc,
             treatment_notes=notes, recommendations=rec,
             outcome="გაუმჯობესება (improvement)",
+            episode_result="გაწერილი (discharged)",
+            disease_outcome="გაუმჯობესება (improvement)",
+        )
+        if ep == "inpatient":
+            a.transportation_type = "სასწრაფო დახმარების მანქანით (ambulance)"
+            a.hospitalized_for_this_disease = True
+            a.bed_days = 3
+        db.add(a)
+        db.flush()
+        # every completed episode gets its mandatory final main diagnosis record
+        db.add(AssessmentDiagnosis(
+            assessment_id=a.id, kind="final_main", icd10_code=icd, description=desc,
+            disease_course="მწვავე (acute)" if ep == "emergency_outpatient" else "ქრონიკული (chronic)",
         ))
+        if ep == "inpatient":
+            # full spec-compliant inpatient episode: diagnoses + treatment process
+            db.add_all([
+                AssessmentDiagnosis(
+                    assessment_id=a.id, kind="preliminary", icd10_code="I20.9",
+                    description="Angina pectoris, unspecified", established_at=admitted,
+                ),
+                AssessmentDiagnosis(
+                    assessment_id=a.id, kind="clinical", icd10_code=icd,
+                    description=desc, established_at=admitted + timedelta(hours=6),
+                ),
+                AssessmentDiagnosis(
+                    assessment_id=a.id, kind="final_comorbidity", icd10_code="I10",
+                    description="Essential hypertension", disease_course="ქრონიკული (chronic)",
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="examination_note",
+                    care="სტანდარტული მოვლა", started_at=admitted + timedelta(hours=2),
+                    result_note="Patient stable, chest pain subsided on nitrates. BP 150/95.",
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="diagnostic_exam",
+                    name="Coronary angiography", ncsp_code="FN1AE", care="სტანდარტული მოვლა",
+                    result_date=admitted + timedelta(days=1),
+                    result_note="60% LAD stenosis; medical therapy chosen", icd10_code=icd,
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="lab_test",
+                    name="Troponin I (high sensitivity)", care="სტანდარტული მოვლა",
+                    result_date=admitted + timedelta(hours=3),
+                    result_note="0.02 ng/mL — within normal limits",
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="consultation",
+                    name="Endocrinology consultation", ncsp_code="XS2ME", care="სტანდარტული მოვლა",
+                    started_at=admitted + timedelta(days=1, hours=4),
+                    result_note="Glycemic control acceptable; continue metformin",
+                    details={"specialty": "endocrinology", "consultant_name": "Dr. Irakli Japaridze"},
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="prescription",
+                    name="Aspirin 100mg + Clopidogrel 75mg",
+                    result_note="Dual antiplatelet therapy",
+                    details={"quantity": 30, "intake_instructions": "1x daily each, morning"},
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="discharge_consultation",
+                    name="Cardiology follow-up", ncsp_code="XS2PA",
+                    result_date=admitted + timedelta(days=33),
+                    result_note="Re-evaluate therapy in 1 month",
+                    details={"specialty": "cardiology"},
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="discharge_lab_test",
+                    name="Lipid panel + hs-CRP",
+                    result_date=admitted + timedelta(days=30),
+                    result_note="Fasting sample",
+                ),
+                AssessmentActivity(
+                    assessment_id=a.id, activity_type="discharge_prescription",
+                    name="Atorvastatin 40mg",
+                    result_note="High-intensity statin",
+                    details={"form": "tablet", "substitution_allowed": 1, "quantity": 30,
+                             "intake_instructions": "1x daily, evening"},
+                ),
+            ])
+        elif ep == "emergency_outpatient":
+            db.add(AssessmentVisit(
+                assessment_id=a.id, started_at=admitted,
+                ended_at=admitted + timedelta(hours=3),
+                comment="Emergency visit: triptan administered, observed 3h, discharged symptom-free",
+            ))
     counts["assessments"] = len(assessments_data)
 
-    # ---- profile items (anamnesis vitae) ----
+    # ---- profile items (anamnesis vitae) — rich for patient 1 ----
     profile_data = [
         (patients[0], "allergy", "Penicillin", "Skin rash", None),
-        (patients[0], "immunization", "COVID-19 (Pfizer)", "2 doses + booster", "2023-11-10"),
+        (patients[0], "allergy", "Pollen (seasonal)", "Allergic rhinitis in spring", None),
+        (patients[0], "chronic_condition", "Mixed dyslipidemia", "LDL elevated, on statin", "2022-05-01"),
+        (patients[0], "chronic_condition", "Stage 1 hypertension", "Controlled on ACE inhibitor", "2026-01-10"),
         (patients[0], "medication", "Bisoprolol 2.5mg", "1x daily, morning", None),
+        (patients[0], "medication", "Atorvastatin 20mg", "1x daily, evening", None),
+        (patients[0], "medication", "Lisinopril 20mg", "1x daily, morning", None),
+        (patients[0], "immunization", "COVID-19 (Pfizer)", "2 doses + booster", "2023-11-10"),
+        (patients[0], "immunization", "Influenza", "Annual", "2025-10-05"),
+        (patients[0], "surgery", "Appendectomy", "Laparoscopic, uncomplicated", "2009-06-20"),
+        (patients[0], "family_history", "Father — myocardial infarction at 62", None, None),
+        (patients[0], "family_history", "Mother — type 2 diabetes", None, None),
+        (patients[0], "social_history", "Never smoker; ~3 glasses wine/week", None, None),
+        (patients[0], "screening", "Mammography — BI-RADS 1", "Normal", "2025-04-12"),
         (patients[1], "chronic_condition", "Hypertension", None, "2015-06-01"),
         (patients[1], "chronic_condition", "Type 2 diabetes", None, "2024-02-15"),
         (patients[1], "medication", "Metformin 850mg", "2x daily", None),
@@ -168,6 +294,25 @@ def seed():
             occurred_on=datetime.strptime(when, "%Y-%m-%d").date() if when else None,
         ))
     counts["profile_items"] = len(profile_data)
+
+    # ---- calendar: appointments, reminders, medication schedule for patient 1 ----
+    calendar_data = [
+        ("appointment", "Cardiology follow-up — Dr. Beridze", 5, "10:30", "Clinic room 204"),
+        ("appointment", "Lab draw: lipid panel + hs-CRP", 9, "08:00", "Fasting required"),
+        ("appointment", "Primary care annual visit", 17, "09:00", None),
+        ("reminder", "Refill atorvastatin", 2, None, None),
+        ("reminder", "Submit home BP log", 4, None, None),
+        ("reminder", "Log overnight sleep", 1, None, None),
+        ("medication", "Bisoprolol 2.5mg", 0, "08:00", "Once daily, morning"),
+        ("medication", "Atorvastatin 20mg", 0, "21:00", "Once daily, evening"),
+        ("medication", "Lisinopril 20mg", 0, "08:00", "Once daily, morning"),
+    ]
+    for kind, title, day_offset, t, detail in calendar_data:
+        db.add(CalendarEvent(
+            patient_id=patients[0].id, kind=kind, title=title,
+            event_date=TODAY + timedelta(days=day_offset), event_time=t, detail=detail,
+        ))
+    counts["calendar_events"] = len(calendar_data)
 
     # ---- access requests: approved grants + one pending ----
     ar = [
