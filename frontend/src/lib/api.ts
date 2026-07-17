@@ -35,6 +35,32 @@ export type CategoryMetric = {
   name: string;
   unit: string | null;
   box: string | null;
+  reference: string | null;
+  range_low: number | null;
+  range_high: number | null;
+  modality: string | null;
+  diagnostic_group: string | null;
+};
+
+export type Box = {
+  id: string;
+  title: string;
+  subtitle: string;
+  metrics: CategoryMetric[];
+};
+
+export type Section = { id: string; title: string };
+
+export type CalendarKind = "appointment" | "reminder" | "medication";
+
+export type CalendarEvent = {
+  id: number;
+  kind: CalendarKind;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  detail: string | null;
+  created_at: string;
 };
 
 export type EpisodeType =
@@ -394,6 +420,24 @@ export const api = {
   listCategories: () => apiFetch<Category[]>("/categories"),
   categoryMetrics: (code: string) =>
     apiFetch<CategoryMetric[]>(`/categories/${code}/metrics`),
+
+  // ----- catalog (reference data; replaces hardcoded @/data/health) -----
+  catalogBoxes: () => apiFetch<Box[]>("/catalog/boxes"),
+  catalogSections: () => apiFetch<Section[]>("/catalog/sections"),
+  catalogMetrics: () => apiFetch<CategoryMetric[]>("/catalog/metrics"),
+
+  // ----- calendar (appointments / reminders / medication schedule) -----
+  calendar: (kind?: CalendarKind) =>
+    apiFetch<CalendarEvent[]>("/calendar/mine", { query: { kind } }),
+  addCalendarEvent: (input: {
+    kind: CalendarKind;
+    title: string;
+    event_date: string;
+    event_time?: string | null;
+    detail?: string | null;
+  }) => apiFetch<CalendarEvent>("/calendar", { method: "POST", body: input }),
+  deleteCalendarEvent: (id: number) =>
+    apiFetch<void>(`/calendar/${id}`, { method: "DELETE" }),
 
   // ----- dashboards -----
   patientDashboard: () => apiFetch<PatientDashboard>("/dashboard/patient"),

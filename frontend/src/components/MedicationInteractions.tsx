@@ -8,8 +8,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 
-import { medications } from "@/data/health";
 import { fetchLiveInteractions } from "@/lib/drug-interactions.functions";
+import { api, type ProfileItem } from "@/lib/api";
+import { usePatientId } from "@/lib/usePatient";
+import { useAsync } from "@/components/backend/ui";
 
 type Severity = "major" | "moderate" | "minor" | "none";
 
@@ -115,15 +117,19 @@ const SEVERITY_STYLE: Record<Severity, { bg: string; fg: string; label: string }
   none: { bg: "#bcd0a6", fg: "#1a2a18", label: "No interaction" },
 };
 
-function activeDrugs() {
-  return medications.map((m) => ({
+type Drug = { key: string; label: string; detail: string };
+
+// The patient's active medications come from the backend profile (item_type
+// 'medication'); the interaction evidence base above is reference knowledge.
+function activeDrugs(profile: Record<string, ProfileItem[]>): Drug[] {
+  return (profile.medication ?? []).map((m) => ({
     key: m.name.toLowerCase(),
     label: m.name,
-    detail: `Since ${m.since} · ${m.times.join(", ")}`,
+    detail: m.detail ?? "",
   }));
 }
 
-function matchPair(drugs: ReturnType<typeof activeDrugs>) {
+function matchPair(drugs: Drug[]) {
   return INTERACTIONS.filter((i) => {
     const hasA = drugs.some((d) => d.key.includes(i.a));
     const hasB = drugs.some((d) => d.key.includes(i.b));
@@ -132,7 +138,15 @@ function matchPair(drugs: ReturnType<typeof activeDrugs>) {
 }
 
 export function MedicationInteractions() {
-  const drugs = activeDrugs();
+  const patientId = usePatientId();
+  const profileQ = useAsync(
+    () =>
+      patientId
+        ? api.getProfile(patientId)
+        : Promise.resolve({} as Record<string, ProfileItem[]>),
+    [patientId],
+  );
+  const drugs = activeDrugs(profileQ.data ?? {});
   const pairs = matchPair(drugs);
   const ordered = [...pairs].sort((x, y) => {
     const rank: Record<Severity, number> = { major: 0, moderate: 1, minor: 2, none: 3 };

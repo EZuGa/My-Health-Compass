@@ -2,8 +2,7 @@ import { useMemo } from "react";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { DaliByBox } from "@/components/DaliArt";
-import { boxes, patient } from "@/data/health";
-import { getCachedUser, api, type Observation } from "@/lib/api";
+import { getCachedUser, api, type Box, type Observation } from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
 import { useAsync } from "@/components/backend/ui";
 
@@ -23,14 +22,14 @@ export const Route = createFileRoute("/_authenticated/")({
 
 function Dashboard() {
   const user = getCachedUser();
-  const displayName = user?.full_name ?? `Personal Record № ${patient.pid}`;
-  const dob = user?.date_of_birth ?? patient.dob;
-  const pid = user?.personal_number ?? patient.pid;
+  const displayName = user?.full_name ?? "Health Passport";
+  const dob = user?.date_of_birth ?? "—";
+  const pid = user?.personal_number ?? "—";
 
-  // Real latest measurements from the backend, grouped by health-domain box
-  // (the backend's box field is heart/metabolic/fitness/sleep/mind/exposures,
-  // matching these cards). Falls back to sample data when a box has no readings.
+  // Everything from the backend: the domain cards come from /catalog/boxes and
+  // the latest value on each card from /vitals/latest (grouped by box).
   const patientId = usePatientId();
+  const boxesQ = useAsync<Box[]>(() => api.catalogBoxes(), []);
   const vitals = useAsync(
     () => (patientId ? api.latestVitals(patientId) : Promise.resolve([] as Observation[])),
     [patientId],
@@ -43,6 +42,7 @@ function Dashboard() {
     }
     return m;
   }, [vitals.data]);
+  const boxes = boxesQ.data ?? [];
   return (
     <AppShell>
       <section className="max-w-5xl">
@@ -59,9 +59,8 @@ function Dashboard() {
       </section>
 
       <section className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr">
-        {boxes.map((b, i) => {
+        {boxes.map((b) => {
           const Art = DaliByBox[b.id];
-          const mock = b.metrics[0];
           const live = latestByBox[b.id];
           return (
             <Link
@@ -77,21 +76,14 @@ function Dashboard() {
               <p className="mt-1 text-base font-semibold">{b.subtitle}</p>
               <div className="mt-auto pt-4 border-t border-foreground/25 flex items-baseline justify-between">
                 <span className="text-xs font-bold">{b.metrics.length} metrics tracked</span>
-                {live ? (
+                {live && (
                   <span className="text-xs font-bold">
                     {live.metric.replace(/_/g, " ")}:{" "}
                     <span className="font-black">
                       {live.value_num ?? live.value_text} {live.unit ?? ""}
                     </span>
                   </span>
-                ) : mock ? (
-                  <span className="text-xs font-bold opacity-60">
-                    {mock.name}:{" "}
-                    <span className="font-black">
-                      {mock.series.at(-1)?.value} {mock.unit}
-                    </span>
-                  </span>
-                ) : null}
+                )}
               </div>
             </Link>
           );

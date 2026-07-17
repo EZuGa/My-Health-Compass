@@ -1,30 +1,98 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { MetricChart } from "@/components/MetricChart";
-import { diagnostics, interventions } from "@/data/health";
+import type { Metric, Intervention } from "@/data/health";
+import { api, type CategoryMetric, type Observation, type ProfileItem } from "@/lib/api";
+import { usePatientId } from "@/lib/usePatient";
+import { useAsync, ErrorNote } from "@/components/backend/ui";
 
 export const Route = createFileRoute("/_authenticated/diagnostic/$metricId")({
-  loader: ({ params }) => {
-    const metric = diagnostics.find((m) => m.id === params.metricId);
-    if (!metric) throw notFound();
-    return { metric };
-  },
-  notFoundComponent: () => (
-    <AppShell>
-      <p className="font-bold">Diagnostic variable not found.</p>
-      <Link to="/section/$sectionId" params={{ sectionId: "dx" }} className="underline font-bold">
-        ← Back to Diagnostic Data
-      </Link>
-    </AppShell>
-  ),
-  errorComponent: ({ error }) => (
-    <AppShell><p className="font-bold">{error.message}</p></AppShell>
-  ),
   component: DiagnosticDetail,
 });
 
+function interventionsFromProfile(profile: Record<string, ProfileItem[]>): Intervention[] {
+  const kindMap: Record<string, Intervention["kind"]> = {
+    medication: "medication",
+    surgery: "procedure",
+    screening: "procedure",
+    chronic_condition: "lifestyle",
+  };
+  const out: Intervention[] = [];
+  for (const items of Object.values(profile)) {
+    for (const it of items) {
+      if (!it.occurred_on) continue;
+      out.push({ date: it.occurred_on, label: it.name, kind: kindMap[it.item_type] ?? "lifestyle" });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function DiagnosticDetail() {
-  const { metric } = Route.useLoaderData();
+  const { metricId } = Route.useParams();
+  const patientId = usePatientId();
+
+  const metricsQ = useAsync<CategoryMetric[]>(() => api.catalogMetrics(), []);
+  const obsQ = useAsync(
+    () =>
+      patientId
+        ? api.listObservations(patientId, { metric: metricId })
+        : Promise.resolve([] as Observation[]),
+    [patientId, metricId],
+  );
+  const profileQ = useAsync(
+    () =>
+      patientId
+        ? api.getProfile(patientId)
+        : Promise.resolve({} as Record<string, ProfileItem[]>),
+    [patientId],
+  );
+
+  const cm = metricsQ.data?.find((m) => m.code === metricId);
+
+  const metric: Metric | null = useMemo(() => {
+    if (!cm) return null;
+    const series = (obsQ.data ?? [])
+      .filter((o) => o.value_num != null)
+      .map((o) => ({ date: o.observed_at, value: o.value_num as number }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      id: cm.code,
+      name: cm.name,
+      unit: cm.unit ?? "",
+      reference: cm.reference ?? undefined,
+      range:
+        cm.range_low != null && cm.range_high != null
+          ? ([cm.range_low, cm.range_high] as [number, number])
+          : undefined,
+      series,
+    };
+  }, [cm, obsQ.data]);
+
+  const interventions = useMemo(
+    () => interventionsFromProfile(profileQ.data ?? {}),
+    [profileQ.data],
+  );
+
+  if (metricsQ.loading && !metricsQ.data) {
+    return (
+      <AppShell>
+        <p className="opacity-70">Loading…</p>
+      </AppShell>
+    );
+  }
+  if (!cm || !metric) {
+    return (
+      <AppShell>
+        <ErrorNote error={metricsQ.error} />
+        <p className="font-bold">Diagnostic variable not found.</p>
+        <Link to="/section/$sectionId" params={{ sectionId: "dx" }} className="underline font-bold">
+          ← Back to Diagnostic Data
+        </Link>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <Link
@@ -36,8 +104,10 @@ function DiagnosticDetail() {
       </Link>
       <h1 className="mt-2 font-serif text-4xl font-black">{metric.name}</h1>
       <p className="mt-1 text-sm font-bold opacity-80">
-        {metric.category} · {metric.modality.toUpperCase()} · trend by date with intervention overlays
+        {cm.diagnostic_group ?? cm.box ?? "general"} · {(cm.modality ?? "vital").toUpperCase()} ·
+        trend by date with intervention overlays
       </p>
+      <ErrorNote error={obsQ.error} />
       <div className="mt-4 flex-1 flex flex-col">
         <MetricChart metric={metric} interventions={interventions} />
       </div>

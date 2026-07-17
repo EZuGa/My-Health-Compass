@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { medications, appointments, reminders } from "@/data/health";
+import { api, type CalendarEvent } from "@/lib/api";
 
 type Tab = "all" | "medications" | "appointments" | "reminders";
 
@@ -18,6 +18,11 @@ function CalendarPage() {
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState<string>(() => ymd(new Date()));
   const [tab, setTab] = useState<Tab>("all");
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  useEffect(() => {
+    api.calendar().then(setEvents).catch(() => setEvents([]));
+  }, []);
 
   const monthGrid = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -31,18 +36,20 @@ function CalendarPage() {
   }, [cursor]);
 
   const dayEvents = (dateStr: string) => {
-    const meds = medications
-      .filter((m) => m.since <= dateStr)
-      .flatMap((m) => m.times.map((t) => ({ kind: "medication" as const, time: t, label: m.name })));
-    const appts = appointments
-      .filter((a) => a.date === dateStr)
-      .map((a) => ({ kind: "appointment" as const, time: a.time, label: a.title }));
-    const rems = reminders
-      .filter((r) => r.date === dateStr)
-      .map((r) => ({ kind: "reminder" as const, time: "—", label: r.title }));
-    let all = [...meds, ...appts, ...rems];
-    if (tab !== "all") all = all.filter((e) => e.kind === tab.slice(0, -1));
-    return all.sort((a, b) => a.time.localeCompare(b.time));
+    // Medications recur daily from their start date; appointments/reminders
+    // are single-day. All events come from the backend calendar.
+    const all = events
+      .filter((e) =>
+        e.kind === "medication" ? e.event_date <= dateStr : e.event_date === dateStr,
+      )
+      .map((e) => ({
+        kind: e.kind,
+        time: e.event_time ?? "—",
+        label: e.title,
+      }));
+    let filtered = all;
+    if (tab !== "all") filtered = all.filter((e) => e.kind === tab.slice(0, -1));
+    return filtered.sort((a, b) => a.time.localeCompare(b.time));
   };
 
   const selectedEvents = dayEvents(selected);

@@ -8,8 +8,7 @@ import { MedicalHistoryDialog } from "./MedicalHistoryDialog";
 import { SubspecialtyDialog } from "./SubspecialtyDialog";
 import { LogoMark } from "./LogoMark";
 import { GlobalDisclaimer } from "./GlobalDisclaimer";
-import { nejmSections } from "@/data/health";
-import { auth, getCachedUser } from "@/lib/api";
+import { auth, getCachedUser, api, type Section } from "@/lib/api";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -17,8 +16,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(getCachedUser()?.role ?? null);
+  const [sections, setSections] = useState<Section[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    api.catalogSections().then(setSections).catch(() => setSections([]));
+  }, []);
 
   useEffect(() => {
     const cached = getCachedUser();
@@ -185,7 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 Clinical Record
               </summary>
               <ul className="space-y-0.5 mt-2 px-1">
-                {nejmSections.map((s) => {
+                {sections.map((s) => {
                   const isTimeline = s.id === "timeline";
                   const to = isTimeline ? "/timeline" : `/section/${s.id}`;
                   const active = pathname === to;
