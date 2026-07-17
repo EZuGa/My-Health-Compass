@@ -9,7 +9,7 @@ browser ──> nginx :8080 ──┬── /api/*  ──> backend :8000 ──
                           └── /*      ──> frontend :3000
 ```
 
-## Quick start
+## Quick start (development, hot reload)
 
 ```sh
 cd My-Health-Compass
@@ -18,6 +18,29 @@ docker compose up -d --build
 
 - App: http://localhost:8080
 - API docs: http://localhost:8080/api/docs
+
+`docker compose up` automatically merges `docker-compose.override.yml`, which
+bind-mounts your source into the containers:
+
+- **backend** — `uvicorn --reload`: edit anything under `backend/app/` and the
+  server restarts.
+- **frontend** — Vite dev server: edits under `frontend/src/` hot-reload in the
+  browser (HMR), no refresh needed.
+
+Both watchers poll (file events don't cross Docker Desktop bind mounts), so a
+change can take up to ~1 s to apply. After changing `frontend/package.json`,
+restart the frontend container (`docker compose restart frontend`) — it re-runs
+`bun install` on start. After changing `backend/requirements.txt`, rebuild:
+`docker compose up -d --build backend`.
+
+## Production-style build
+
+```sh
+docker compose -f docker-compose.yml up -d --build
+```
+
+Skips the dev override: no bind mounts, frontend served as the optimized
+TanStack Start build.
 
 Configuration is optional — copy `.env.example` to `.env` to change the port,
 Postgres password, JWT secret, or add AI API keys.

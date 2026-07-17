@@ -12,4 +12,16 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // The Docker dev container (docker-compose.override.yml) bind-mounts the
+    // source, where native file events don't propagate — it sets
+    // CHOKIDAR_USEPOLLING so HMR polls instead. No-op outside Docker.
+    server: process.env.CHOKIDAR_USEPOLLING
+      ? {
+          watch: { usePolling: true, interval: 300 },
+          // Requests arrive proxied by the compose nginx; skip the host check.
+          allowedHosts: true,
+        }
+      : {},
+  },
 });

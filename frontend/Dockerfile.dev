@@ -1,0 +1,20 @@
+# Dev image: Vite dev server with HMR. Source is bind-mounted by
+# docker-compose.override.yml; node_modules lives in a named volume seeded
+# from this image.
+FROM oven/bun:1
+
+# Declared only so the build arg inherited from the base compose file
+# doesn't warn; the dev server reads VITE_API_URL from the environment.
+ARG VITE_API_URL
+
+WORKDIR /app
+
+COPY package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile
+
+EXPOSE 3000
+
+# `bun install` reconciles the node_modules volume when package.json changed
+# since the image was built; it's a no-op otherwise. CLI flags override the
+# Lovable config's port 8080 default — nginx proxies to frontend:3000.
+CMD ["sh", "-c", "bun install && exec bun run dev --port 3000 --strictPort"]

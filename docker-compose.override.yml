@@ -1,0 +1,36 @@
+# Development override — `docker compose up` merges this automatically.
+# Source is bind-mounted into the containers and both servers hot-reload:
+#   backend  → uvicorn --reload          frontend → vite dev (HMR)
+# Everything still goes through nginx at http://localhost:8080.
+#
+# For the production-style build, run:
+#   docker compose -f docker-compose.yml up -d --build
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --root-path /api --reload --reload-dir app
+    environment:
+      # Bind mounts on Docker Desktop don't deliver native file events;
+      # make watchfiles poll instead.
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      # /app/uploads stays on the named volume from the base file.
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_API_URL: /api
+      # Read by vite.config.ts (and chokidar itself) to poll for changes
+      # instead of relying on file events bind mounts don't propagate.
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      # Keep the image's Linux node_modules; the host's Windows install
+      # underneath the bind mount must not leak into the container.
+      - frontend_node_modules:/app/node_modules
+
+volumes:
+  frontend_node_modules:
