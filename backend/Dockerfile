@@ -9,7 +9,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY schema.sql seed_demo.py ./
+COPY schema.sql seed_demo.py seed_kukusha.py ./
 
 # Non-root user; /app/uploads is a named volume in compose and inherits this
 # ownership on first mount.

@@ -93,11 +93,11 @@ def seed():
     ]
     doctors = [
         User(role="doctor", email="cardio@demo.ge", password_hash=pw, personal_number="01005044444",
-             full_name="Dr. Levan Beridze", specialty="cardiology"),
+             full_name="Levan Beridze", specialty="cardiology"),
         User(role="doctor", email="neuro@demo.ge", password_hash=pw, personal_number="01005055555",
-             full_name="Dr. Tamar Gelashvili", specialty="neurology"),
+             full_name="Tamar Gelashvili", specialty="neurology"),
         User(role="doctor", email="endo@demo.ge", password_hash=pw, personal_number="01005066666",
-             full_name="Dr. Irakli Japaridze", specialty="endocrinology"),
+             full_name="Irakli Japaridze", specialty="endocrinology"),
     ]
     db.add_all(patients + doctors)
     db.commit()
