@@ -21,7 +21,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    api.catalogSections().then(setSections).catch(() => setSections([]));
+    api
+      .catalogSections()
+      .then(setSections)
+      .catch(() => setSections([]));
   }, []);
 
   useEffect(() => {
@@ -176,134 +179,132 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            {role !== "doctor" && (
+            {/* All sections are available to every role; doctors additionally
+                get the Clinician Console below. */}
             <>
-            <details className="group rounded-md cloud-panel overflow-hidden">
-              <summary
-                className="cursor-pointer list-none block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md"
+              <details className="group rounded-md cloud-panel overflow-hidden">
+                <summary
+                  className="cursor-pointer list-none block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md"
+                  style={{
+                    background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 50%, #f3cfe2 100%)",
+                    color: "#3a2a55",
+                  }}
+                >
+                  Clinical Record
+                </summary>
+                <ul className="space-y-0.5 mt-2 px-1">
+                  {sections.map((s) => {
+                    const isTimeline = s.id === "timeline";
+                    const to = isTimeline ? "/timeline" : `/section/${s.id}`;
+                    const active = pathname === to;
+                    const className = `block text-[13px] leading-tight py-1.5 px-2 rounded-md font-bold transition ${
+                      active
+                        ? "bg-[color:var(--mint)] shadow-[0_2px_8px_-2px_rgba(20,50,60,0.25)]"
+                        : "hover:bg-[color:var(--mint-soft)]"
+                    }`;
+                    return (
+                      <li key={s.id}>
+                        {isTimeline ? (
+                          <Link to="/timeline" className={className} onClick={closeSidebar}>
+                            {s.title}
+                          </Link>
+                        ) : (
+                          <Link
+                            to="/section/$sectionId"
+                            params={{ sectionId: s.id }}
+                            className={className}
+                            onClick={closeSidebar}
+                          >
+                            {s.title}
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+
+              <SubspecialtyDialog />
+              <MedicalHistoryDialog />
+
+              <Link
+                to="/calendar"
+                onClick={closeSidebar}
+                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
                 style={{
-                  background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 50%, #f3cfe2 100%)",
-                  color: "#3a2a55",
+                  background: "linear-gradient(160deg, #bcd0a6 0%, #9caf88 100%)",
+                  color: "#1a2a18",
                 }}
               >
-                Clinical Record
-              </summary>
-              <ul className="space-y-0.5 mt-2 px-1">
-                {sections.map((s) => {
-                  const isTimeline = s.id === "timeline";
-                  const to = isTimeline ? "/timeline" : `/section/${s.id}`;
-                  const active = pathname === to;
-                  const className = `block text-[13px] leading-tight py-1.5 px-2 rounded-md font-bold transition ${
-                    active
-                      ? "bg-[color:var(--mint)] shadow-[0_2px_8px_-2px_rgba(20,50,60,0.25)]"
-                      : "hover:bg-[color:var(--mint-soft)]"
-                  }`;
-                  return (
-                    <li key={s.id}>
-                      {isTimeline ? (
-                        <Link to="/timeline" className={className} onClick={closeSidebar}>
-                          {s.title}
-                        </Link>
-                      ) : (
-                        <Link
-                          to="/section/$sectionId"
-                          params={{ sectionId: s.id }}
-                          className={className}
-                          onClick={closeSidebar}
-                        >
-                          {s.title}
-                        </Link>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
+                Calendar
+              </Link>
 
-            <SubspecialtyDialog />
-            <MedicalHistoryDialog />
+              <Link
+                to="/connections"
+                onClick={closeSidebar}
+                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                style={{
+                  background: "linear-gradient(160deg, #ffe6ec 0%, #ffc2d2 100%)",
+                  color: "#5a1a2e",
+                }}
+              >
+                Data Connections
+              </Link>
 
-            <Link
-              to="/calendar"
-              onClick={closeSidebar}
-              className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-              style={{
-                background: "linear-gradient(160deg, #bcd0a6 0%, #9caf88 100%)",
-                color: "#1a2a18",
-              }}
-            >
-              Calendar
-            </Link>
+              <Link
+                to="/forms"
+                onClick={closeSidebar}
+                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                style={{
+                  background: "linear-gradient(160deg, #d5ecd5 0%, #a8d5a8 100%)",
+                  color: "#163019",
+                }}
+              >
+                Medical Forms
+              </Link>
 
-            <Link
-              to="/connections"
-              onClick={closeSidebar}
-              className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-              style={{
-                background: "linear-gradient(160deg, #ffe6ec 0%, #ffc2d2 100%)",
-                color: "#5a1a2e",
-              }}
-            >
-              Data Connections
-            </Link>
-
-            <Link
-              to="/forms"
-              onClick={closeSidebar}
-              className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-              style={{
-                background: "linear-gradient(160deg, #d5ecd5 0%, #a8d5a8 100%)",
-                color: "#163019",
-              }}
-            >
-              Medical Forms
-            </Link>
-
-            <Link
-              to="/toxcheck"
-              onClick={closeSidebar}
-              className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-              style={{
-                background: "linear-gradient(160deg, #ffc2d2 0%, #b8243a 100%)",
-                color: "#fff",
-              }}
-            >
-              ToxCheck
-            </Link>
+              <Link
+                to="/toxcheck"
+                onClick={closeSidebar}
+                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                style={{
+                  background: "linear-gradient(160deg, #ffc2d2 0%, #b8243a 100%)",
+                  color: "#fff",
+                }}
+              >
+                ToxCheck
+              </Link>
             </>
-            )}
 
             {/* Backend-powered EHR (consent-based records API) */}
             <div className="mt-2 pt-2 border-t border-foreground/15 flex flex-col gap-2">
               <span className="text-center text-[9px] uppercase tracking-[0.2em] font-extrabold opacity-50">
                 Electronic Health Record
               </span>
-              {role !== "doctor" && (
-                <>
-                  <Link
-                    to="/records"
-                    onClick={closeSidebar}
-                    className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                    style={{
-                      background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 100%)",
-                      color: "#2a2a55",
-                    }}
-                  >
-                    Health Records
-                  </Link>
-                  <Link
-                    to="/intake"
-                    onClick={closeSidebar}
-                    className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                    style={{
-                      background: "linear-gradient(160deg, #cde7d6 0%, #9fd3b4 100%)",
-                      color: "#153019",
-                    }}
-                  >
-                    AI Intake
-                  </Link>
-                </>
-              )}
+              <>
+                <Link
+                  to="/records"
+                  onClick={closeSidebar}
+                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                  style={{
+                    background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 100%)",
+                    color: "#2a2a55",
+                  }}
+                >
+                  Health Records
+                </Link>
+                <Link
+                  to="/intake"
+                  onClick={closeSidebar}
+                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                  style={{
+                    background: "linear-gradient(160deg, #cde7d6 0%, #9fd3b4 100%)",
+                    color: "#153019",
+                  }}
+                >
+                  AI Intake
+                </Link>
+              </>
               {role !== "patient" && (
                 <Link
                   to="/clinic"

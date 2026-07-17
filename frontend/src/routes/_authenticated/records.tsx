@@ -11,12 +11,7 @@ import {
   fmtDate,
   fmtDateTime,
 } from "@/components/backend/ui";
-import {
-  api,
-  getCachedUser,
-  type ProfileItem,
-  type ProfileItemType,
-} from "@/lib/api";
+import { api, type ProfileItem, type ProfileItemType } from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
 import { VitalsTab } from "@/components/backend/VitalsTab";
 import { HistoryTab } from "@/components/backend/HistoryTab";
@@ -26,14 +21,7 @@ export const Route = createFileRoute("/_authenticated/records")({
   component: RecordsPage,
 });
 
-type Tab =
-  | "overview"
-  | "vitals"
-  | "profile"
-  | "history"
-  | "documents"
-  | "timeline"
-  | "access";
+type Tab = "overview" | "vitals" | "profile" | "history" | "documents" | "timeline" | "access";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -48,31 +36,14 @@ const TABS: { id: Tab; label: string }[] = [
 function RecordsPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const patientId = usePatientId();
-  const user = getCachedUser();
-
-  if (user && user.role === "doctor") {
-    return (
-      <AppShell>
-        <Panel title="Health Records">
-          <Empty>
-            You are signed in as a doctor. Head to the{" "}
-            <Link to="/clinic" className="underline font-bold">
-              Clinician Console
-            </Link>{" "}
-            to request access and review patients.
-          </Empty>
-        </Panel>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell>
       <section className="max-w-5xl w-full">
         <h1 className="font-serif text-3xl font-black">Health Records</h1>
         <p className="mt-1 text-sm font-semibold opacity-70">
-          Your consent-controlled electronic health record, served by the
-          backend. Doctors only see what you approve.
+          Your consent-controlled electronic health record, served by the backend. Doctors only see
+          what you approve.
         </p>
 
         <nav className="mt-4 flex flex-wrap gap-2">
@@ -82,9 +53,7 @@ function RecordsPage() {
               type="button"
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-[11px] uppercase tracking-wider font-extrabold rounded-md border border-foreground/30 ${
-                tab === t.id
-                  ? "bg-[color:var(--mint-deep)]"
-                  : "hover:bg-[color:var(--mint-soft)]"
+                tab === t.id ? "bg-[color:var(--mint-deep)]" : "hover:bg-[color:var(--mint-soft)]"
               }`}
             >
               {t.label}
@@ -132,14 +101,8 @@ function Overview() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <StatTile label="Observations" value={data.observation_count} />
             <StatTile label="Documents" value={data.document_count} />
-            <StatTile
-              label="Categories"
-              value={data.categories.length}
-            />
-            <StatTile
-              label="Pending consents"
-              value={data.pending_access_requests.length}
-            />
+            <StatTile label="Categories" value={data.categories.length} />
+            <StatTile label="Pending consents" value={data.pending_access_requests.length} />
           </div>
 
           <div>
@@ -176,9 +139,7 @@ function Overview() {
           </div>
 
           <div>
-            <h3 className="font-serif text-lg font-black mb-2">
-              History by category
-            </h3>
+            <h3 className="font-serif text-lg font-black mb-2">History by category</h3>
             {data.categories.length === 0 ? (
               <Empty>No clinical assessments recorded yet.</Empty>
             ) : (
@@ -191,8 +152,7 @@ function Overview() {
                     <span className="font-bold">{c.category.name}</span>
                     <span className="text-[11px] font-semibold opacity-70">
                       {c.assessment_count} visit
-                      {c.assessment_count === 1 ? "" : "s"} · last{" "}
-                      {fmtDate(c.last_visit)}
+                      {c.assessment_count === 1 ? "" : "s"} · last {fmtDate(c.last_visit)}
                     </span>
                   </li>
                 ))}
@@ -219,10 +179,7 @@ const ITEM_TYPES: { id: ProfileItemType; label: string }[] = [
 ];
 
 function ProfileTab({ patientId }: { patientId: number }) {
-  const { data, loading, error, reload } = useAsync(
-    () => api.getProfile(patientId),
-    [patientId],
-  );
+  const { data, loading, error, reload } = useAsync(() => api.getProfile(patientId), [patientId]);
   const [itemType, setItemType] = useState<ProfileItemType>("allergy");
   const [name, setName] = useState("");
   const [detail, setDetail] = useState("");
@@ -318,9 +275,7 @@ function ProfileTab({ patientId }: { patientId: number }) {
           <div className="flex flex-col gap-4">
             {ITEM_TYPES.filter((t) => grouped[t.id]?.length).map((t) => (
               <div key={t.id}>
-                <h3 className="font-serif text-base font-black mb-1">
-                  {t.label}
-                </h3>
+                <h3 className="font-serif text-base font-black mb-1">{t.label}</h3>
                 <ul className="flex flex-col gap-1">
                   {grouped[t.id].map((it: ProfileItem) => (
                     <li
@@ -330,10 +285,7 @@ function ProfileTab({ patientId }: { patientId: number }) {
                       <div>
                         <span className="font-bold">{it.name}</span>
                         {it.detail && (
-                          <span className="text-[12px] opacity-70">
-                            {" "}
-                            — {it.detail}
-                          </span>
+                          <span className="text-[12px] opacity-70"> — {it.detail}</span>
                         )}
                         {it.occurred_on && (
                           <span className="text-[11px] opacity-50">
@@ -443,9 +395,7 @@ function DocumentsTab({ patientId }: { patientId: number }) {
                   >
                     {d.original_name ?? "Document"}
                   </a>
-                  {d.summary && (
-                    <span className="text-[12px] opacity-70"> — {d.summary}</span>
-                  )}
+                  {d.summary && <span className="text-[12px] opacity-70"> — {d.summary}</span>}
                   <div className="text-[10px] opacity-50">
                     {fmtDate(d.occurred_at)} · {d.mime ?? "file"}
                   </div>
@@ -472,10 +422,7 @@ function DocumentsTab({ patientId }: { patientId: number }) {
 // ---------------- Timeline ----------------
 
 function TimelineTab({ patientId }: { patientId: number }) {
-  const { data, loading, error } = useAsync(
-    () => api.timeline(patientId),
-    [patientId],
-  );
+  const { data, loading, error } = useAsync(() => api.timeline(patientId), [patientId]);
   const toneFor = (t: string) =>
     t === "assessment"
       ? "pink"
@@ -501,13 +448,9 @@ function TimelineTab({ patientId }: { patientId: number }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <Pill tone={toneFor(e.event_type) as any}>{e.event_type}</Pill>
                 <span className="font-bold">{e.title}</span>
-                <span className="text-[10px] opacity-50">
-                  {fmtDateTime(e.date)}
-                </span>
+                <span className="text-[10px] opacity-50">{fmtDateTime(e.date)}</span>
               </div>
-              {e.detail && (
-                <p className="text-[12px] opacity-70 mt-0.5">{e.detail}</p>
-              )}
+              {e.detail && <p className="text-[12px] opacity-70 mt-0.5">{e.detail}</p>}
             </li>
           ))}
         </ul>
@@ -564,9 +507,7 @@ function AccessTab() {
                   {r.doctor_name ?? `Doctor #${r.doctor_id}`}{" "}
                   <Pill tone="pink">{r.category.name}</Pill>
                 </div>
-                {r.reason && (
-                  <p className="text-[12px] opacity-70">{r.reason}</p>
-                )}
+                {r.reason && <p className="text-[12px] opacity-70">{r.reason}</p>}
                 <div className="text-[10px] opacity-50">
                   requested {fmtDateTime(r.requested_at)}
                   {r.expires_at ? ` · expires ${fmtDate(r.expires_at)}` : ""}

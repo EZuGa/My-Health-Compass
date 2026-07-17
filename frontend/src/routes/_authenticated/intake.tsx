@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { Panel, Pill, ErrorNote, Empty, useAsync, fmtDateTime } from "@/components/backend/ui";
-import { api, getCachedUser, type Observation } from "@/lib/api";
+import { api, type Observation } from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
 
 export const Route = createFileRoute("/_authenticated/intake")({
@@ -18,7 +18,6 @@ const EXAMPLES = [
 
 function IntakePage() {
   const patientId = usePatientId();
-  const user = getCachedUser();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -27,27 +26,9 @@ function IntakePage() {
 
   const recent = useAsync<Observation[]>(
     () =>
-      patientId
-        ? api.listObservations(patientId, { source_kind: "chat" })
-        : Promise.resolve([]),
+      patientId ? api.listObservations(patientId, { source_kind: "chat" }) : Promise.resolve([]),
     [patientId, reloadKey],
   );
-
-  if (user && user.role === "doctor") {
-    return (
-      <AppShell>
-        <Panel title="AI Intake">
-          <Empty>
-            AI intake is a patient feature. As a doctor, use the{" "}
-            <Link to="/clinic" className="underline font-bold">
-              Clinician Console
-            </Link>
-            .
-          </Empty>
-        </Panel>
-      </AppShell>
-    );
-  }
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,9 +52,8 @@ function IntakePage() {
       <section className="max-w-3xl w-full">
         <h1 className="font-serif text-3xl font-black">AI Intake</h1>
         <p className="mt-1 text-sm font-semibold opacity-70">
-          Tell the app how you feel in plain language. It extracts structured,
-          timestamped vitals and stores them on your record via{" "}
-          <code className="text-[12px]">/intake/message</code>.
+          Tell the app how you feel in plain language. It extracts structured, timestamped vitals
+          and stores them on your record via <code className="text-[12px]">/intake/message</code>.
         </p>
       </section>
 
@@ -133,15 +113,11 @@ function IntakePage() {
                     className="flex items-center justify-between border border-foreground/15 bg-card px-3 py-2 rounded-md"
                   >
                     <div>
-                      <span className="font-bold">
-                        {o.metric.replace(/_/g, " ")}
-                      </span>
-                      : {o.value_num ?? o.value_text}
+                      <span className="font-bold">{o.metric.replace(/_/g, " ")}</span>:{" "}
+                      {o.value_num ?? o.value_text}
                       {o.unit ? ` ${o.unit}` : ""}
                     </div>
-                    <span className="text-[10px] opacity-50">
-                      {fmtDateTime(o.observed_at)}
-                    </span>
+                    <span className="text-[10px] opacity-50">{fmtDateTime(o.observed_at)}</span>
                   </li>
                 ))}
             </ul>
