@@ -27,7 +27,8 @@ def request_access(
     doctor: User = Depends(require_doctor),
     db: Session = Depends(get_db),
 ):
-    """Doctor asks for access to a patient's history in one category."""
+    """Doctor asks for access to a patient's record. The category records what
+    prompted the request; an approved grant opens the full record."""
     if data.patient_id is not None:
         patient = db.get(User, data.patient_id)
     elif data.patient_personal_number:
@@ -47,12 +48,13 @@ def request_access(
 
     category = get_category_or_404(db, data.category_code)
 
+    # Grants are record-wide, so dedupe across categories: any pending request
+    # or unexpired grant for this patient makes a new request pointless.
     now = datetime.now(timezone.utc)
     existing = db.scalars(
         select(AccessRequest).where(
             AccessRequest.doctor_id == doctor.id,
             AccessRequest.patient_id == patient.id,
-            AccessRequest.category_id == category.id,
             AccessRequest.status.in_(["pending", "approved"]),
         )
     ).all()
@@ -121,7 +123,7 @@ def _decide(db: Session, patient: User, request_id: int, new_status: str) -> Acc
 
 @router.post("/{request_id}/approve", response_model=AccessRequestOut)
 def approve(request_id: int, patient: User = Depends(require_patient), db: Session = Depends(get_db)):
-    """Patient approves — the doctor can then read this category for ACCESS_GRANT_DAYS."""
+    """Patient approves — the doctor can then read the full record for ACCESS_GRANT_DAYS."""
     return _to_out(_decide(db, patient, request_id, "approved"))
 
 

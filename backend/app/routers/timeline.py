@@ -10,7 +10,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import Assessment, Observation, PatientDocument, ProfileItem, User
 from ..schemas import TimelineEvent
-from .helpers import has_active_grant, require_patient_readable
+from .helpers import require_patient_readable
 
 router = APIRouter(tags=["timeline"])
 
@@ -29,9 +29,9 @@ def timeline(
     viewer: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Newest first. Patient sees everything of their own; a doctor sees general data
-    (observations, documents, profile) plus only assessments in categories they hold
-    an active grant for."""
+    """Newest first. Patient sees everything of their own; a doctor holding an
+    active grant sees the full record — assessments in every category plus
+    general data (observations, documents, profile)."""
     require_patient_readable(db, viewer, patient_id)
     events: list[TimelineEvent] = []
 
@@ -39,10 +39,6 @@ def timeline(
     if setting:
         q = q.where(Assessment.episode_type == setting)
     for a in db.scalars(q):
-        if viewer.role == "doctor" and not (
-            a.doctor_id == viewer.id or has_active_grant(db, viewer.id, patient_id, a.category_id)
-        ):
-            continue  # assessments stay category-scoped
         diagnosis = a.final_diagnosis_icd10 or a.clinical_diagnosis_icd10 or a.preliminary_diagnosis_icd10
         events.append(TimelineEvent(
             date=_as_utc(a.visit_date),

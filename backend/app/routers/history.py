@@ -9,7 +9,7 @@ from ..auth import get_current_user, require_doctor, require_patient
 from ..database import get_db
 from ..models import Assessment, AssessmentImage, Category, CategoryMetric, User
 from ..schemas import AssessmentOut, CategoryHistoryOut, CategoryMetricOut, CategoryOut
-from .helpers import get_category_or_404, has_active_grant, to_assessment_out
+from .helpers import get_category_or_404, has_any_active_grant, to_assessment_out
 
 router = APIRouter(tags=["history"])
 
@@ -80,16 +80,17 @@ def patient_history_for_doctor(
     doctor: User = Depends(require_doctor),
     db: Session = Depends(get_db),
 ):
-    """Doctor reads a patient's history for one category — only with an approved, unexpired grant."""
+    """Doctor reads a patient's history for one category — needs an approved,
+    unexpired grant from the patient (any grant opens the full record)."""
     patient = db.get(User, patient_id)
     if patient is None or patient.role != "patient":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Patient not found")
     category = get_category_or_404(db, category_code)
 
-    if not has_active_grant(db, doctor.id, patient.id, category.id):
+    if not has_any_active_grant(db, doctor.id, patient.id):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "No approved access grant for this patient/category. "
+            "No approved access grant for this patient. "
             "Create an access request and wait for the patient to approve it.",
         )
     return [to_assessment_out(a) for a in _history_for_category(db, patient.id, category.id)]
@@ -111,7 +112,7 @@ def download_image(
     allowed = (
         (user.role == "patient" and a.patient_id == user.id)
         or (user.role == "doctor" and a.doctor_id == user.id)
-        or (user.role == "doctor" and has_active_grant(db, user.id, a.patient_id, a.category_id))
+        or (user.role == "doctor" and has_any_active_grant(db, user.id, a.patient_id))
     )
     if not allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this file")

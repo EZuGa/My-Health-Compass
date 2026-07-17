@@ -1,6 +1,6 @@
 """One-call patient summary — everything a doctor needs at the start of a visit:
 demographics, allergies, chronic conditions, medications, latest vitals,
-recent assessments (scoped to the doctor's grants).
+recent assessments (an active grant from the patient opens the full record).
 
 Also the full EHR summary (`/doctors/patients/{id}/ehr-summary`) laid out after
 the MoH "Summary List for History" spec — the read view a doctor gets of a
@@ -17,7 +17,7 @@ from ..auth import get_current_user, require_doctor
 from ..database import get_db
 from ..models import Assessment, Observation, ProfileItem, User
 from ..schemas import AssessmentOut, ObservationOut, ProfileItemOut
-from .helpers import has_active_grant, require_patient_readable, to_assessment_out
+from .helpers import require_patient_readable, to_assessment_out
 from .wearables import latest_vitals
 
 router = APIRouter(tags=["patient summary"])
@@ -60,18 +60,14 @@ def patient_summary(
     for it in items:
         grouped[it.item_type].append(ProfileItemOut.model_validate(it))
 
-    assessments = db.scalars(
+    # require_patient_readable already gated access: patients see their own
+    # record, doctors hold an active grant — which opens all categories.
+    visible = db.scalars(
         select(Assessment)
         .where(Assessment.patient_id == patient_id)
         .order_by(Assessment.visit_date.desc())
-        .limit(20)
+        .limit(5)
     ).all()
-    visible = [
-        a for a in assessments
-        if viewer.role == "patient"
-        or a.doctor_id == viewer.id
-        or has_active_grant(db, viewer.id, patient_id, a.category_id)
-    ][:5]
 
     today = date.today()
     age = None
@@ -134,8 +130,8 @@ class EhrSummary(BaseModel):
     """Doctor read view of the patient record, after the MoH Summary List spec.
 
     Episodes carry the full write-side detail (anamnesis morbi, diagnoses,
-    treatment-process activities, discharge and post-discharge blocks) and are
-    limited to categories the patient has granted this doctor."""
+    treatment-process activities, discharge and post-discharge blocks); the
+    patient's grant opens every category."""
     patient: PatientInfoBlock
     anamnesis_vitae: AnamnesisVitaeBlock
     episodes: list[AssessmentOut]
@@ -165,11 +161,11 @@ def ehr_summary(
         .where(Assessment.patient_id == patient_id)
         .order_by(Assessment.visit_date.desc())
     ).all()
+    # The grant checked by require_patient_readable covers the whole record.
     episodes, categories = [], set()
     for a in assessments:
-        if a.doctor_id == doctor.id or has_active_grant(db, doctor.id, patient_id, a.category_id):
-            episodes.append(to_assessment_out(a))
-            categories.add(a.category.code)
+        episodes.append(to_assessment_out(a))
+        categories.add(a.category.code)
 
     today = date.today()
     age = None

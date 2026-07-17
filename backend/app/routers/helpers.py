@@ -15,26 +15,11 @@ def get_category_or_404(db: Session, code: str) -> Category:
     return category
 
 
-def has_active_grant(db: Session, doctor_id: int, patient_id: int, category_id: int) -> bool:
-    """True if the patient approved this doctor for this category and it hasn't expired."""
-    now = datetime.now(timezone.utc)
-    grant = db.scalar(
-        select(AccessRequest).where(
-            AccessRequest.doctor_id == doctor_id,
-            AccessRequest.patient_id == patient_id,
-            AccessRequest.category_id == category_id,
-            AccessRequest.status == "approved",
-            (AccessRequest.expires_at.is_(None)) | (AccessRequest.expires_at > now),
-        )
-    )
-    return grant is not None
-
-
 def has_any_active_grant(db: Session, doctor_id: int, patient_id: int) -> bool:
-    """True if the patient approved this doctor for at least one category (not expired).
+    """True if the patient approved this doctor and the grant hasn't expired.
 
-    Used for non-specialty data (allergies, medications, observations, documents):
-    any treating doctor the patient has approved may see it.
+    An approved grant opens the patient's whole record — the category on the
+    request only records what prompted the ask, it does not scope access.
     """
     now = datetime.now(timezone.utc)
     grant = db.scalar(
@@ -49,9 +34,9 @@ def has_any_active_grant(db: Session, doctor_id: int, patient_id: int) -> bool:
 
 
 def require_patient_readable(db: Session, viewer, patient_id: int):
-    """Return the patient if `viewer` may read their general (non-specialty) data.
+    """Return the patient if `viewer` may read their data.
 
-    Patients read themselves; doctors need at least one active grant.
+    Patients read themselves; doctors need an active grant.
     """
     from ..models import User  # local import to avoid cycle at module load
 
