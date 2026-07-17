@@ -63,11 +63,7 @@ export type CalendarEvent = {
   created_at: string;
 };
 
-export type EpisodeType =
-  | "inpatient"
-  | "day_hospital"
-  | "emergency_outpatient"
-  | "outpatient";
+export type EpisodeType = "inpatient" | "day_hospital" | "emergency_outpatient" | "outpatient";
 
 export type ImageOut = {
   id: number;
@@ -234,13 +230,7 @@ export type IntakeResult = {
 };
 
 export type WearableSource =
-  | "apple_health"
-  | "samsung_health"
-  | "whoop"
-  | "fitbit"
-  | "garmin"
-  | "oura"
-  | "other";
+  "apple_health" | "samsung_health" | "whoop" | "fitbit" | "garmin" | "oura" | "other";
 
 export type WearableSample = {
   metric: string;
@@ -287,8 +277,7 @@ export function getCachedUser(): User | null {
 }
 
 function cacheUser(u: User) {
-  if (typeof window !== "undefined")
-    window.localStorage.setItem(USER_KEY, JSON.stringify(u));
+  if (typeof window !== "undefined") window.localStorage.setItem(USER_KEY, JSON.stringify(u));
 }
 
 // ---------- low-level fetch ----------
@@ -351,8 +340,7 @@ async function apiFetch<T>(path: string, opts: FetchOpts = {}): Promise<T> {
       (data && typeof data === "object" && "detail" in data
         ? (data as { detail: unknown }).detail
         : undefined) ?? res.statusText;
-    const message =
-      typeof detail === "string" ? detail : JSON.stringify(detail);
+    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
     if (res.status === 401) clearToken();
     throw new ApiError(res.status, message);
   }
@@ -383,12 +371,15 @@ export type RegisterInput = {
 
 export const auth = {
   async login(email: string, password: string): Promise<User> {
-    const { access_token } = await apiFetch<{ access_token: string }>(
-      "/auth/login",
-      { method: "POST", body: { email, password }, auth: false },
-    );
+    const { access_token } = await apiFetch<{ access_token: string }>("/auth/login", {
+      method: "POST",
+      body: { email, password },
+      auth: false,
+    });
     setToken(access_token);
-    const user = await auth.me();
+    // Force a fresh /me here — this is the one network fetch per login; a
+    // stale cached user (e.g. previous account on this browser) must not win.
+    const user = await auth.me(true);
     return user;
   },
 
@@ -403,10 +394,25 @@ export const auth = {
     return user;
   },
 
-  async me(): Promise<User> {
-    const user = await apiFetch<User>("/auth/me");
-    cacheUser(user);
-    return user;
+  /**
+   * The signed-in user. Served from localStorage — /auth/me is only fetched
+   * when there's no cached user yet (first login, or a session restored from
+   * a bare token). Concurrent cache-miss callers share one in-flight request.
+   */
+  async me(forceRefresh = false): Promise<User> {
+    if (!forceRefresh) {
+      const cached = getCachedUser();
+      if (cached) return cached;
+    }
+    meInFlight ??= apiFetch<User>("/auth/me")
+      .then((user) => {
+        cacheUser(user);
+        return user;
+      })
+      .finally(() => {
+        meInFlight = null;
+      });
+    return meInFlight;
   },
 
   logout() {
@@ -414,12 +420,13 @@ export const auth = {
   },
 };
 
+let meInFlight: Promise<User> | null = null;
+
 // ---------- categories ----------
 
 export const api = {
   listCategories: () => apiFetch<Category[]>("/categories"),
-  categoryMetrics: (code: string) =>
-    apiFetch<CategoryMetric[]>(`/categories/${code}/metrics`),
+  categoryMetrics: (code: string) => apiFetch<CategoryMetric[]>(`/categories/${code}/metrics`),
 
   // ----- catalog (reference data; replaces hardcoded @/data/health) -----
   catalogBoxes: () => apiFetch<Box[]>("/catalog/boxes"),
@@ -436,8 +443,7 @@ export const api = {
     event_time?: string | null;
     detail?: string | null;
   }) => apiFetch<CalendarEvent>("/calendar", { method: "POST", body: input }),
-  deleteCalendarEvent: (id: number) =>
-    apiFetch<void>(`/calendar/${id}`, { method: "DELETE" }),
+  deleteCalendarEvent: (id: number) => apiFetch<void>(`/calendar/${id}`, { method: "DELETE" }),
 
   // ----- dashboards -----
   patientDashboard: () => apiFetch<PatientDashboard>("/dashboard/patient"),
@@ -453,8 +459,7 @@ export const api = {
     icd10?: string | null;
     occurred_on?: string | null;
   }) => apiFetch<ProfileItem>("/profile/items", { method: "POST", body: input }),
-  deleteProfileItem: (id: number) =>
-    apiFetch<void>(`/profile/items/${id}`, { method: "DELETE" }),
+  deleteProfileItem: (id: number) => apiFetch<void>(`/profile/items/${id}`, { method: "DELETE" }),
 
   // ----- observations -----
   listObservations: (
@@ -489,8 +494,7 @@ export const api = {
       method: "POST",
       body: input,
     }),
-  deleteObservation: (id: number) =>
-    apiFetch<void>(`/observations/${id}`, { method: "DELETE" }),
+  deleteObservation: (id: number) => apiFetch<void>(`/observations/${id}`, { method: "DELETE" }),
   latestVitals: (patientId: number) =>
     apiFetch<Observation[]>(`/patients/${patientId}/vitals/latest`),
   observationStats: (patientId: number, metric: string) =>
@@ -517,8 +521,7 @@ export const api = {
     apiFetch<PatientDocument[]>(`/documents/patient/${patientId}`),
   uploadDocument: (form: FormData) =>
     apiFetch<PatientDocument>("/documents", { method: "POST", form }),
-  deleteDocument: (id: number) =>
-    apiFetch<void>(`/documents/${id}`, { method: "DELETE" }),
+  deleteDocument: (id: number) => apiFetch<void>(`/documents/${id}`, { method: "DELETE" }),
   documentDownloadUrl: (id: number) => `${API_URL}/documents/${id}/download`,
   imageDownloadUrl: (id: number) => `${API_URL}/images/${id}`,
 
@@ -529,17 +532,13 @@ export const api = {
     }),
 
   // ----- summary -----
-  summary: (patientId: number) =>
-    apiFetch<PatientSummary>(`/patients/${patientId}/summary`),
+  summary: (patientId: number) => apiFetch<PatientSummary>(`/patients/${patientId}/summary`),
 
   // ----- history -----
   myHistory: () => apiFetch<CategoryHistory[]>("/patients/me/history"),
-  myHistoryForCategory: (code: string) =>
-    apiFetch<Assessment[]>(`/patients/me/history/${code}`),
+  myHistoryForCategory: (code: string) => apiFetch<Assessment[]>(`/patients/me/history/${code}`),
   doctorPatientHistory: (patientId: number, code: string) =>
-    apiFetch<Assessment[]>(
-      `/doctors/patients/${patientId}/history/${code}`,
-    ),
+    apiFetch<Assessment[]>(`/doctors/patients/${patientId}/history/${code}`),
 
   // ----- assessments (doctor) -----
   submitAssessment: (input: {
@@ -574,8 +573,7 @@ export const api = {
     apiFetch<AccessRequest[]>("/access-requests/incoming", {
       query: { status_filter: statusFilter },
     }),
-  outgoingRequests: () =>
-    apiFetch<AccessRequest[]>("/access-requests/outgoing"),
+  outgoingRequests: () => apiFetch<AccessRequest[]>("/access-requests/outgoing"),
   approveRequest: (id: number) =>
     apiFetch<AccessRequest>(`/access-requests/${id}/approve`, { method: "POST" }),
   denyRequest: (id: number) =>

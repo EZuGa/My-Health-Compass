@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 import { auth, getCachedUser, isAuthed } from "@/lib/api";
+import { useSelectedPatient } from "@/lib/selectedPatient";
 
 /**
- * Returns the signed-in user's id (the patient id in the backend, since a
- * patient owns their own record). Null while loading or when not signed in.
- * The api layer caches the user in localStorage, so there's no round-trip on
- * mount once the user has been fetched.
+ * The patient id whose data the current pages should render.
+ *
+ * For a patient this is always their own id. For a doctor who has opened a
+ * patient from the search page it is the selected patient's id; a doctor
+ * without an open patient gets their own (empty) id back.
+ * Null while loading or when not signed in. The api layer caches the user in
+ * localStorage, so there's no round-trip on mount once the user was fetched.
  */
 export function usePatientId(): number | null {
-  const [id, setId] = useState<number | null>(() => getCachedUser()?.id ?? null);
+  const [ownId, setOwnId] = useState<number | null>(() => getCachedUser()?.id ?? null);
+  const selected = useSelectedPatient();
 
   useEffect(() => {
     let cancelled = false;
@@ -16,7 +21,7 @@ export function usePatientId(): number | null {
     (async () => {
       try {
         const user = await auth.me();
-        if (!cancelled) setId(user.id);
+        if (!cancelled) setOwnId(user.id);
       } catch {
         // best-effort; components fall back to localStorage
       }
@@ -26,5 +31,6 @@ export function usePatientId(): number | null {
     };
   }, []);
 
-  return id;
+  if (getCachedUser()?.role === "doctor" && selected) return selected.id;
+  return ownId;
 }

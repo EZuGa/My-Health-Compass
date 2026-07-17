@@ -9,6 +9,7 @@ import { SubspecialtyDialog } from "./SubspecialtyDialog";
 import { LogoMark } from "./LogoMark";
 import { GlobalDisclaimer } from "./GlobalDisclaimer";
 import { auth, getCachedUser, api, type Section } from "@/lib/api";
+import { useSelectedPatient, setSelectedPatient } from "@/lib/selectedPatient";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -19,6 +20,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sections, setSections] = useState<Section[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // The patient a doctor currently has open; drives the nav and the banner.
+  const selected = useSelectedPatient();
 
   useEffect(() => {
     api
@@ -55,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     await queryClient.cancelQueries();
     queryClient.clear();
     auth.logout();
+    setSelectedPatient(null);
     navigate({ to: "/auth", replace: true });
   };
 
@@ -179,146 +183,160 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            {/* All sections are available to every role; doctors additionally
-                get the Clinician Console below. */}
-            <>
-              <details className="group rounded-md cloud-panel overflow-hidden">
-                <summary
-                  className="cursor-pointer list-none block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md"
-                  style={{
-                    background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 50%, #f3cfe2 100%)",
-                    color: "#3a2a55",
-                  }}
-                >
-                  Clinical Record
-                </summary>
-                <ul className="space-y-0.5 mt-2 px-1">
-                  {sections.map((s) => {
-                    const isTimeline = s.id === "timeline";
-                    const to = isTimeline ? "/timeline" : `/section/${s.id}`;
-                    const active = pathname === to;
-                    const className = `block text-[13px] leading-tight py-1.5 px-2 rounded-md font-bold transition ${
-                      active
-                        ? "bg-[color:var(--mint)] shadow-[0_2px_8px_-2px_rgba(20,50,60,0.25)]"
-                        : "hover:bg-[color:var(--mint-soft)]"
-                    }`;
-                    return (
-                      <li key={s.id}>
-                        {isTimeline ? (
-                          <Link to="/timeline" className={className} onClick={closeSidebar}>
-                            {s.title}
-                          </Link>
-                        ) : (
-                          <Link
-                            to="/section/$sectionId"
-                            params={{ sectionId: s.id }}
-                            className={className}
-                            onClick={closeSidebar}
-                          >
-                            {s.title}
-                          </Link>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </details>
-
-              <SubspecialtyDialog />
-              <MedicalHistoryDialog />
-
+            {/* A doctor who hasn't opened a patient only gets the link back to
+                the search page; everyone else gets the full navigation. */}
+            {role === "doctor" && !selected ? (
               <Link
-                to="/calendar"
+                to="/"
                 onClick={closeSidebar}
                 className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
                 style={{
-                  background: "linear-gradient(160deg, #bcd0a6 0%, #9caf88 100%)",
-                  color: "#1a2a18",
+                  background: "linear-gradient(160deg, #ffe0b8 0%, #f0a35a 100%)",
+                  color: "#4a2a10",
                 }}
               >
-                Calendar
+                Find a patient
               </Link>
-
-              <Link
-                to="/connections"
-                onClick={closeSidebar}
-                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                style={{
-                  background: "linear-gradient(160deg, #ffe6ec 0%, #ffc2d2 100%)",
-                  color: "#5a1a2e",
-                }}
-              >
-                Data Connections
-              </Link>
-
-              <Link
-                to="/forms"
-                onClick={closeSidebar}
-                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                style={{
-                  background: "linear-gradient(160deg, #d5ecd5 0%, #a8d5a8 100%)",
-                  color: "#163019",
-                }}
-              >
-                Medical Forms
-              </Link>
-
-              <Link
-                to="/toxcheck"
-                onClick={closeSidebar}
-                className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                style={{
-                  background: "linear-gradient(160deg, #ffc2d2 0%, #b8243a 100%)",
-                  color: "#fff",
-                }}
-              >
-                ToxCheck
-              </Link>
-            </>
-
-            {/* Backend-powered EHR (consent-based records API) */}
-            <div className="mt-2 pt-2 border-t border-foreground/15 flex flex-col gap-2">
-              <span className="text-center text-[9px] uppercase tracking-[0.2em] font-extrabold opacity-50">
-                Electronic Health Record
-              </span>
+            ) : (
               <>
+                <details className="group rounded-md cloud-panel overflow-hidden">
+                  <summary
+                    className="cursor-pointer list-none block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md"
+                    style={{
+                      background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 50%, #f3cfe2 100%)",
+                      color: "#3a2a55",
+                    }}
+                  >
+                    Clinical Record
+                  </summary>
+                  <ul className="space-y-0.5 mt-2 px-1">
+                    {sections.map((s) => {
+                      const isTimeline = s.id === "timeline";
+                      const to = isTimeline ? "/timeline" : `/section/${s.id}`;
+                      const active = pathname === to;
+                      const className = `block text-[13px] leading-tight py-1.5 px-2 rounded-md font-bold transition ${
+                        active
+                          ? "bg-[color:var(--mint)] shadow-[0_2px_8px_-2px_rgba(20,50,60,0.25)]"
+                          : "hover:bg-[color:var(--mint-soft)]"
+                      }`;
+                      return (
+                        <li key={s.id}>
+                          {isTimeline ? (
+                            <Link to="/timeline" className={className} onClick={closeSidebar}>
+                              {s.title}
+                            </Link>
+                          ) : (
+                            <Link
+                              to="/section/$sectionId"
+                              params={{ sectionId: s.id }}
+                              className={className}
+                              onClick={closeSidebar}
+                            >
+                              {s.title}
+                            </Link>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
+
+                <SubspecialtyDialog />
+                <MedicalHistoryDialog />
+
                 <Link
-                  to="/records"
+                  to="/calendar"
                   onClick={closeSidebar}
                   className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
                   style={{
-                    background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 100%)",
-                    color: "#2a2a55",
+                    background: "linear-gradient(160deg, #bcd0a6 0%, #9caf88 100%)",
+                    color: "#1a2a18",
                   }}
                 >
-                  Health Records
+                  Calendar
                 </Link>
+
                 <Link
-                  to="/intake"
+                  to="/connections"
                   onClick={closeSidebar}
                   className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
                   style={{
-                    background: "linear-gradient(160deg, #cde7d6 0%, #9fd3b4 100%)",
-                    color: "#153019",
+                    background: "linear-gradient(160deg, #ffe6ec 0%, #ffc2d2 100%)",
+                    color: "#5a1a2e",
                   }}
                 >
-                  AI Intake
+                  Data Connections
                 </Link>
+
+                <Link
+                  to="/forms"
+                  onClick={closeSidebar}
+                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                  style={{
+                    background: "linear-gradient(160deg, #d5ecd5 0%, #a8d5a8 100%)",
+                    color: "#163019",
+                  }}
+                >
+                  Medical Forms
+                </Link>
+
+                <Link
+                  to="/toxcheck"
+                  onClick={closeSidebar}
+                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                  style={{
+                    background: "linear-gradient(160deg, #ffc2d2 0%, #b8243a 100%)",
+                    color: "#fff",
+                  }}
+                >
+                  ToxCheck
+                </Link>
+
+                {/* Backend-powered EHR (consent-based records API) */}
+                <div className="mt-2 pt-2 border-t border-foreground/15 flex flex-col gap-2">
+                  <span className="text-center text-[9px] uppercase tracking-[0.2em] font-extrabold opacity-50">
+                    Electronic Health Record
+                  </span>
+                  <>
+                    <Link
+                      to="/records"
+                      onClick={closeSidebar}
+                      className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                      style={{
+                        background: "linear-gradient(160deg, #d8e0ff 0%, #d9c6ee 100%)",
+                        color: "#2a2a55",
+                      }}
+                    >
+                      Health Records
+                    </Link>
+                    <Link
+                      to="/intake"
+                      onClick={closeSidebar}
+                      className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                      style={{
+                        background: "linear-gradient(160deg, #cde7d6 0%, #9fd3b4 100%)",
+                        color: "#153019",
+                      }}
+                    >
+                      AI Intake
+                    </Link>
+                  </>
+                  {role === "doctor" && selected && (
+                    <Link
+                      to="/assessments"
+                      onClick={closeSidebar}
+                      className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
+                      style={{
+                        background: "linear-gradient(160deg, #ffe0b8 0%, #f0a35a 100%)",
+                        color: "#4a2a10",
+                      }}
+                    >
+                      Assessments
+                    </Link>
+                  )}
+                </div>
               </>
-              {role !== "patient" && (
-                <Link
-                  to="/clinic"
-                  onClick={closeSidebar}
-                  className="block text-center text-[11px] uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel"
-                  style={{
-                    background: "linear-gradient(160deg, #ffe0b8 0%, #f0a35a 100%)",
-                    color: "#4a2a10",
-                  }}
-                >
-                  Clinician Console
-                </Link>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="flex-1" />
@@ -344,6 +362,23 @@ export function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         <main className="px-4 md:px-8 py-6 flex flex-col gap-6 min-h-[calc(100vh-49px)]">
+          {role === "doctor" && selected && (
+            <div className="max-w-5xl w-full flex items-center justify-between gap-3 flex-wrap border border-foreground/25 bg-[color:var(--mint-soft)] px-3 py-2 rounded-md">
+              <span className="text-[12px] font-extrabold uppercase tracking-wider">
+                Viewing record: {selected.name} · patient #{selected.id}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPatient(null);
+                  navigate({ to: "/" });
+                }}
+                className="px-3 py-1 text-[11px] uppercase tracking-wider font-extrabold border border-foreground/40 hover:bg-background"
+              >
+                Exit patient view
+              </button>
+            </div>
+          )}
           {children}
         </main>
       </div>

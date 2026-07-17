@@ -11,10 +11,18 @@ import {
   fmtDate,
   fmtDateTime,
 } from "@/components/backend/ui";
-import { api, type ProfileItem, type ProfileItemType } from "@/lib/api";
+import {
+  api,
+  getCachedUser,
+  type Category,
+  type ProfileItem,
+  type ProfileItemType,
+} from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
+import { useSelectedPatient } from "@/lib/selectedPatient";
 import { VitalsTab } from "@/components/backend/VitalsTab";
 import { HistoryTab } from "@/components/backend/HistoryTab";
+import { CategoryHistory, PatientSummaryView } from "@/components/doctor";
 
 export const Route = createFileRoute("/_authenticated/records")({
   head: () => ({ meta: [{ title: "Health Records — Zrunva" }] }),
@@ -36,6 +44,15 @@ const TABS: { id: Tab; label: string }[] = [
 function RecordsPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const patientId = usePatientId();
+  const selected = useSelectedPatient();
+  // A doctor with an open patient sees that patient's record; the patient-only
+  // tabs (own dashboard, own history, consent inbox) get doctor equivalents.
+  const doctorView = getCachedUser()?.role === "doctor" && selected != null;
+  const categories = useAsync<Category[]>(
+    () => (doctorView ? api.listCategories() : Promise.resolve([])),
+    [doctorView],
+  );
+  const tabs = doctorView ? TABS.filter((t) => t.id !== "access") : TABS;
 
   return (
     <AppShell>
@@ -47,7 +64,7 @@ function RecordsPage() {
         </p>
 
         <nav className="mt-4 flex flex-wrap gap-2">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -68,13 +85,26 @@ function RecordsPage() {
             <Empty>Loading your account…</Empty>
           </Panel>
         ) : tab === "overview" ? (
-          <Overview />
+          doctorView ? (
+            <PatientSummaryView patientId={patientId} />
+          ) : (
+            <Overview />
+          )
         ) : tab === "vitals" ? (
           <VitalsTab patientId={patientId} />
         ) : tab === "profile" ? (
           <ProfileTab patientId={patientId} />
         ) : tab === "history" ? (
-          <HistoryTab />
+          doctorView ? (
+            <Panel
+              title="Clinical history"
+              subtitle="Assessments filed for this patient, per category"
+            >
+              <CategoryHistory patientId={patientId} categories={categories.data ?? []} />
+            </Panel>
+          ) : (
+            <HistoryTab />
+          )
         ) : tab === "documents" ? (
           <DocumentsTab patientId={patientId} />
         ) : tab === "timeline" ? (

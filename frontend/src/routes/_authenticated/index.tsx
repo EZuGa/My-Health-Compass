@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { DaliByBox } from "@/components/DaliArt";
+import { DoctorHome } from "@/components/DoctorHome";
 import { getCachedUser, api, type Box, type Observation } from "@/lib/api";
 import { usePatientId } from "@/lib/usePatient";
+import { useSelectedPatient } from "@/lib/selectedPatient";
 import { useAsync } from "@/components/backend/ui";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -13,14 +15,31 @@ export const Route = createFileRoute("/_authenticated/")({
       { name: "description", content: "Six health domains predictive of longevity and mortality." },
     ],
   }),
-  component: Dashboard,
+  component: HomePage,
 });
+
+// Doctors land on the patient search page until they open a patient; then they
+// see the same dashboard as patients, rendered for the opened patient.
+function HomePage() {
+  const user = getCachedUser();
+  const selected = useSelectedPatient();
+  if (user?.role === "doctor" && !selected) {
+    return (
+      <AppShell>
+        <DoctorHome />
+      </AppShell>
+    );
+  }
+  return <Dashboard />;
+}
 
 function Dashboard() {
   const user = getCachedUser();
-  const displayName = user?.full_name ?? "Health Passport";
-  const dob = user?.date_of_birth ?? "—";
-  const pid = user?.personal_number ?? "—";
+  const selected = useSelectedPatient();
+  const viewing = user?.role === "doctor" && selected != null;
+  const displayName = viewing ? selected.name : (user?.full_name ?? "Health Passport");
+  const dob = viewing ? "—" : (user?.date_of_birth ?? "—");
+  const pid = viewing ? String(selected.id) : (user?.personal_number ?? "—");
 
   // Everything from the backend: the domain cards come from /catalog/boxes and
   // the latest value on each card from /vitals/latest (grouped by box).

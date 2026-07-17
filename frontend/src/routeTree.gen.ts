@@ -20,8 +20,8 @@ import { Route as AuthenticatedRecordsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedIntakeRouteImport } from './routes/_authenticated/intake'
 import { Route as AuthenticatedFormsRouteImport } from './routes/_authenticated/forms'
 import { Route as AuthenticatedConnectionsRouteImport } from './routes/_authenticated/connections'
-import { Route as AuthenticatedClinicRouteImport } from './routes/_authenticated/clinic'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
+import { Route as AuthenticatedAssessmentsRouteImport } from './routes/_authenticated/assessments'
 import { Route as AuthenticatedSectionSectionIdRouteImport } from './routes/_authenticated/section.$sectionId'
 import { Route as AuthenticatedFormsFormIdRouteImport } from './routes/_authenticated/forms.$formId'
 import { Route as AuthenticatedDiagnosticMetricIdRouteImport } from './routes/_authenticated/diagnostic.$metricId'
@@ -82,16 +82,17 @@ const AuthenticatedConnectionsRoute =
     path: '/connections',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedClinicRoute = AuthenticatedClinicRouteImport.update({
-  id: '/clinic',
-  path: '/clinic',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAssessmentsRoute =
+  AuthenticatedAssessmentsRouteImport.update({
+    id: '/assessments',
+    path: '/assessments',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSectionSectionIdRoute =
   AuthenticatedSectionSectionIdRouteImport.update({
     id: '/section/$sectionId',
@@ -121,8 +122,8 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
+  '/assessments': typeof AuthenticatedAssessmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
-  '/clinic': typeof AuthenticatedClinicRoute
   '/connections': typeof AuthenticatedConnectionsRoute
   '/forms': typeof AuthenticatedFormsRouteWithChildren
   '/intake': typeof AuthenticatedIntakeRoute
@@ -138,8 +139,8 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
+  '/assessments': typeof AuthenticatedAssessmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
-  '/clinic': typeof AuthenticatedClinicRoute
   '/connections': typeof AuthenticatedConnectionsRoute
   '/forms': typeof AuthenticatedFormsRouteWithChildren
   '/intake': typeof AuthenticatedIntakeRoute
@@ -158,8 +159,8 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/for-clinics': typeof ForClinicsRoute
   '/waitlist': typeof WaitlistRoute
+  '/_authenticated/assessments': typeof AuthenticatedAssessmentsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
-  '/_authenticated/clinic': typeof AuthenticatedClinicRoute
   '/_authenticated/connections': typeof AuthenticatedConnectionsRoute
   '/_authenticated/forms': typeof AuthenticatedFormsRouteWithChildren
   '/_authenticated/intake': typeof AuthenticatedIntakeRoute
@@ -179,8 +180,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/for-clinics'
     | '/waitlist'
+    | '/assessments'
     | '/calendar'
-    | '/clinic'
     | '/connections'
     | '/forms'
     | '/intake'
@@ -196,8 +197,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/for-clinics'
     | '/waitlist'
+    | '/assessments'
     | '/calendar'
-    | '/clinic'
     | '/connections'
     | '/forms'
     | '/intake'
@@ -215,8 +216,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/for-clinics'
     | '/waitlist'
+    | '/_authenticated/assessments'
     | '/_authenticated/calendar'
-    | '/_authenticated/clinic'
     | '/_authenticated/connections'
     | '/_authenticated/forms'
     | '/_authenticated/intake'
@@ -316,18 +317,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConnectionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/clinic': {
-      id: '/_authenticated/clinic'
-      path: '/clinic'
-      fullPath: '/clinic'
-      preLoaderRoute: typeof AuthenticatedClinicRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/calendar': {
       id: '/_authenticated/calendar'
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof AuthenticatedCalendarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/assessments': {
+      id: '/_authenticated/assessments'
+      path: '/assessments'
+      fullPath: '/assessments'
+      preLoaderRoute: typeof AuthenticatedAssessmentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/section/$sectionId': {
@@ -373,8 +374,8 @@ const AuthenticatedFormsRouteWithChildren =
   AuthenticatedFormsRoute._addFileChildren(AuthenticatedFormsRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAssessmentsRoute: typeof AuthenticatedAssessmentsRoute
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
-  AuthenticatedClinicRoute: typeof AuthenticatedClinicRoute
   AuthenticatedConnectionsRoute: typeof AuthenticatedConnectionsRoute
   AuthenticatedFormsRoute: typeof AuthenticatedFormsRouteWithChildren
   AuthenticatedIntakeRoute: typeof AuthenticatedIntakeRoute
@@ -388,8 +389,8 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAssessmentsRoute: AuthenticatedAssessmentsRoute,
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
-  AuthenticatedClinicRoute: AuthenticatedClinicRoute,
   AuthenticatedConnectionsRoute: AuthenticatedConnectionsRoute,
   AuthenticatedFormsRoute: AuthenticatedFormsRouteWithChildren,
   AuthenticatedIntakeRoute: AuthenticatedIntakeRoute,

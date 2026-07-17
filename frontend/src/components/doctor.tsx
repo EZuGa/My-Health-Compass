@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { AppShell } from "@/components/AppShell";
 import {
   Panel,
   StatTile,
@@ -11,108 +9,21 @@ import {
   fmtDate,
   fmtDateTime,
 } from "@/components/backend/ui";
-import {
-  api,
-  getCachedUser,
-  type Category,
-  type EpisodeType,
-  type PatientSummary,
-} from "@/lib/api";
+import { api, type Category, type EpisodeType, type PatientSummary } from "@/lib/api";
 
-export const Route = createFileRoute("/_authenticated/clinic")({
-  head: () => ({ meta: [{ title: "Clinician Console — Zrunva" }] }),
-  component: ClinicPage,
-});
+// Panels used by the doctor-facing pages: the search/home page (overview,
+// access & consent) and the per-patient Assessments page. Extracted from the
+// old Clinical Console; data still comes from the same backend endpoints.
 
-const EPISODES: EpisodeType[] = [
-  "outpatient",
-  "inpatient",
-  "day_hospital",
-  "emergency_outpatient",
-];
+const EPISODES: EpisodeType[] = ["outpatient", "inpatient", "day_hospital", "emergency_outpatient"];
 
-type ClinicTab = "overview" | "access" | "assessments" | "patients";
+// ---------------- Doctor dashboard (overview) ----------------
 
-const CLINIC_TABS: { id: ClinicTab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "access", label: "Access & Consent" },
-  { id: "assessments", label: "Assessments" },
-  { id: "patients", label: "Patient Lookup" },
-];
-
-function ClinicPage() {
-  const user = getCachedUser();
-  const [tab, setTab] = useState<ClinicTab>("overview");
-  const categories = useAsync<Category[]>(() => api.listCategories(), []);
-
-  if (user && user.role !== "doctor") {
-    return (
-      <AppShell>
-        <Panel title="Clinician Console">
-          <Empty>
-            This console is for doctors. Your{" "}
-            <Link to="/records" className="underline font-bold">
-              Health Records
-            </Link>{" "}
-            are over here.
-          </Empty>
-        </Panel>
-      </AppShell>
-    );
-  }
-
-  const cats = categories.data ?? [];
-
-  return (
-    <AppShell>
-      <section className="max-w-5xl w-full">
-        <h1 className="font-serif text-3xl font-black">Clinician Console</h1>
-        <p className="mt-1 text-sm font-semibold opacity-70">
-          Request consent, review patients you've been granted, and file
-          assessments — all against the backend EHR.
-        </p>
-        <nav className="mt-4 flex flex-wrap gap-2">
-          {CLINIC_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 text-[11px] uppercase tracking-wider font-extrabold rounded-md border border-foreground/30 ${
-                tab === t.id
-                  ? "bg-[color:var(--mint-deep)]"
-                  : "hover:bg-[color:var(--mint-soft)]"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </section>
-
-      <div className="max-w-5xl w-full flex flex-col gap-5">
-        {tab === "overview" ? (
-          <DoctorDashboard />
-        ) : tab === "access" ? (
-          <>
-            <RequestAccess categories={cats} />
-            <OutgoingRequests />
-          </>
-        ) : tab === "assessments" ? (
-          <>
-            <SubmitAssessment categories={cats} />
-            <MyAssessments />
-          </>
-        ) : (
-          <PatientViewer categories={cats} />
-        )}
-      </div>
-    </AppShell>
-  );
-}
-
-// ---------------- Doctor dashboard ----------------
-
-function DoctorDashboard() {
+export function DoctorDashboard({
+  onOpenPatient,
+}: {
+  onOpenPatient?: (p: { id: number; name: string }) => void;
+}) {
   const { data, loading, error } = useAsync(() => api.doctorDashboard(), []);
   return (
     <Panel title="My practice" subtitle="/dashboard/doctor">
@@ -129,35 +40,48 @@ function DoctorDashboard() {
           </div>
 
           <div>
-            <h3 className="font-serif text-lg font-black mb-2">
-              Patients you can open now
-            </h3>
+            <h3 className="font-serif text-lg font-black mb-2">Patients you can open now</h3>
             {data.active_grants.length === 0 ? (
               <Empty>No active grants. Request access below.</Empty>
             ) : (
               <ul className="flex flex-col gap-1">
-                {data.active_grants.map((g) => (
-                  <li
-                    key={g.request_id}
-                    className="flex items-center justify-between border border-foreground/15 bg-card px-3 py-2 rounded-md"
-                  >
-                    <span className="font-bold">
-                      {g.patient_name} · patient #{g.patient_id}{" "}
-                      <Pill tone="pink">{g.category.name}</Pill>
-                    </span>
-                    <span className="text-[10px] opacity-50">
-                      expires {fmtDate(g.expires_at)}
-                    </span>
-                  </li>
-                ))}
+                {data.active_grants.map((g) => {
+                  const patient = {
+                    id: g.patient_id,
+                    name: g.patient_name ?? `Patient #${g.patient_id}`,
+                  };
+                  return (
+                    <li
+                      key={g.request_id}
+                      className="flex items-center justify-between border border-foreground/15 bg-card px-3 py-2 rounded-md"
+                    >
+                      {onOpenPatient ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenPatient(patient)}
+                          className="font-bold underline decoration-foreground/30 hover:decoration-foreground text-left"
+                        >
+                          {patient.name} · patient #{g.patient_id}{" "}
+                          <Pill tone="pink">{g.category.name}</Pill>
+                        </button>
+                      ) : (
+                        <span className="font-bold">
+                          {patient.name} · patient #{g.patient_id}{" "}
+                          <Pill tone="pink">{g.category.name}</Pill>
+                        </span>
+                      )}
+                      <span className="text-[10px] opacity-50">
+                        expires {fmtDate(g.expires_at)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
 
           <div>
-            <h3 className="font-serif text-lg font-black mb-2">
-              Pending requests
-            </h3>
+            <h3 className="font-serif text-lg font-black mb-2">Pending requests</h3>
             {data.pending_requests.length === 0 ? (
               <Empty>Nothing awaiting patient approval.</Empty>
             ) : (
@@ -181,9 +105,7 @@ function DoctorDashboard() {
           </div>
 
           <div>
-            <h3 className="font-serif text-lg font-black mb-2">
-              Recent assessments
-            </h3>
+            <h3 className="font-serif text-lg font-black mb-2">Recent assessments</h3>
             {data.recent_assessments.length === 0 ? (
               <Empty>You haven't filed any assessments yet.</Empty>
             ) : (
@@ -194,8 +116,7 @@ function DoctorDashboard() {
                     className="border border-foreground/15 bg-card px-3 py-2 rounded-md"
                   >
                     <div className="font-bold">
-                      {a.category.name}{" "}
-                      <Pill tone="gray">{a.episode_type.replace(/_/g, " ")}</Pill>
+                      {a.category.name} <Pill tone="gray">{a.episode_type.replace(/_/g, " ")}</Pill>
                     </div>
                     <div className="text-[12px] opacity-70">
                       {a.final_diagnosis_icd10 || a.clinical_diagnosis_icd10}{" "}
@@ -217,13 +138,9 @@ function DoctorDashboard() {
 
 // ---------------- Outgoing access requests ----------------
 
-function OutgoingRequests() {
-  const { data, loading, error, reload } = useAsync(
-    () => api.outgoingRequests(),
-    [],
-  );
-  const tone = (s: string) =>
-    s === "approved" ? "mint" : s === "pending" ? "amber" : "gray";
+export function OutgoingRequests() {
+  const { data, loading, error, reload } = useAsync(() => api.outgoingRequests(), []);
+  const tone = (s: string) => (s === "approved" ? "mint" : s === "pending" ? "amber" : "gray");
   return (
     <Panel
       title="My access requests"
@@ -270,11 +187,8 @@ function OutgoingRequests() {
 
 // ---------------- My assessments (+ image upload) ----------------
 
-function MyAssessments() {
-  const { data, loading, error, reload } = useAsync(
-    () => api.myAssessments(),
-    [],
-  );
+export function MyAssessments() {
+  const { data, loading, error, reload } = useAsync(() => api.myAssessments(), []);
   return (
     <Panel
       title="Assessments I've filed"
@@ -297,22 +211,16 @@ function MyAssessments() {
       ) : (
         <ul className="flex flex-col gap-2">
           {data.map((a) => (
-            <li
-              key={a.id}
-              className="border border-foreground/15 bg-card px-3 py-2 rounded-md"
-            >
+            <li key={a.id} className="border border-foreground/15 bg-card px-3 py-2 rounded-md">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-bold">
                   #{a.id} · {a.category.name} · patient #{a.patient_id}{" "}
                   <Pill tone="gray">{a.episode_type.replace(/_/g, " ")}</Pill>
                 </span>
-                <span className="text-[10px] opacity-50">
-                  {fmtDate(a.visit_date)}
-                </span>
+                <span className="text-[10px] opacity-50">{fmtDate(a.visit_date)}</span>
               </div>
               <div className="text-[12px] opacity-70">
-                {a.final_diagnosis_icd10 || a.clinical_diagnosis_icd10}{" "}
-                {a.diagnosis_description}
+                {a.final_diagnosis_icd10 || a.clinical_diagnosis_icd10} {a.diagnosis_description}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 {a.images.map((img) => (
@@ -383,7 +291,7 @@ function ImageUploader({
 
 // ---------------- Request access ----------------
 
-function RequestAccess({ categories }: { categories: Category[] }) {
+export function RequestAccess({ categories }: { categories: Category[] }) {
   const [personalNumber, setPersonalNumber] = useState("");
   const [patientIdRaw, setPatientIdRaw] = useState("");
   const [categoryCode, setCategoryCode] = useState("");
@@ -459,9 +367,7 @@ function RequestAccess({ categories }: { categories: Category[] }) {
           >
             {busy ? "Sending…" : "Request access"}
           </button>
-          {ok && (
-            <span className="text-[12px] font-bold text-green-800">{ok}</span>
-          )}
+          {ok && <span className="text-[12px] font-bold text-green-800">{ok}</span>}
         </div>
       </form>
       <div className="mt-2">
@@ -473,8 +379,15 @@ function RequestAccess({ categories }: { categories: Category[] }) {
 
 // ---------------- Submit assessment ----------------
 
-function SubmitAssessment({ categories }: { categories: Category[] }) {
-  const [patientId, setPatientId] = useState("");
+export function SubmitAssessment({
+  categories,
+  fixedPatientId,
+}: {
+  categories: Category[];
+  /** When set, the assessment targets this patient (input hidden). */
+  fixedPatientId?: number;
+}) {
+  const [patientId, setPatientId] = useState(fixedPatientId != null ? String(fixedPatientId) : "");
   const [categoryCode, setCategoryCode] = useState("");
   const [episode, setEpisode] = useState<EpisodeType>("outpatient");
   const [complaints, setComplaints] = useState("");
@@ -489,7 +402,8 @@ function SubmitAssessment({ categories }: { categories: Category[] }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = categoryCode || categories[0]?.code;
-    if (!patientId.trim() || !code) {
+    const id = fixedPatientId ?? Number(patientId.trim());
+    if (!id || !code) {
       setError(new Error("Patient id and category are required"));
       return;
     }
@@ -498,7 +412,7 @@ function SubmitAssessment({ categories }: { categories: Category[] }) {
     setOk(null);
     try {
       const a = await api.submitAssessment({
-        patient_id: Number(patientId.trim()),
+        patient_id: id,
         category_code: code,
         episode_type: episode,
         complaints: complaints.trim() || null,
@@ -523,17 +437,21 @@ function SubmitAssessment({ categories }: { categories: Category[] }) {
 
   return (
     <Panel
-      title="File assessment"
+      title={
+        fixedPatientId != null ? `File assessment — patient #${fixedPatientId}` : "File assessment"
+      }
       subtitle="Requires an approved grant for the category → /assessments"
     >
       <form onSubmit={submit} className="flex flex-col gap-2">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <input
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            placeholder="Patient id"
-            className="bg-card border border-foreground/20 px-2 py-1.5 text-sm font-semibold"
-          />
+          {fixedPatientId == null && (
+            <input
+              value={patientId}
+              onChange={(e) => setPatientId(e.target.value)}
+              placeholder="Patient id"
+              className="bg-card border border-foreground/20 px-2 py-1.5 text-sm font-semibold"
+            />
+          )}
           <select
             value={categoryCode}
             onChange={(e) => setCategoryCode(e.target.value)}
@@ -599,9 +517,7 @@ function SubmitAssessment({ categories }: { categories: Category[] }) {
           >
             {busy ? "Filing…" : "File assessment"}
           </button>
-          {ok && (
-            <span className="text-[12px] font-bold text-green-800">{ok}</span>
-          )}
+          {ok && <span className="text-[12px] font-bold text-green-800">{ok}</span>}
         </div>
         <ErrorNote error={error} />
       </form>
@@ -609,62 +525,27 @@ function SubmitAssessment({ categories }: { categories: Category[] }) {
   );
 }
 
-// ---------------- Patient viewer ----------------
+// ---------------- Patient summary (one-call visit summary) ----------------
 
-function PatientViewer({ categories }: { categories: Category[] }) {
-  const [patientIdRaw, setPatientIdRaw] = useState("");
-  const [loadedId, setLoadedId] = useState<number | null>(null);
-  const [summary, setSummary] = useState<PatientSummary | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!patientIdRaw.trim()) return;
-    const id = Number(patientIdRaw.trim());
-    setBusy(true);
-    setError(null);
-    setSummary(null);
-    try {
-      const s = await api.summary(id);
-      setSummary(s);
-      setLoadedId(id);
-    } catch (err) {
-      setError(err);
-      setLoadedId(null);
-    } finally {
-      setBusy(false);
-    }
-  };
+export function PatientSummaryView({ patientId }: { patientId: number }) {
+  const {
+    data: summary,
+    loading,
+    error,
+  } = useAsync<PatientSummary>(() => api.summary(patientId), [patientId]);
 
   return (
     <Panel
-      title="Open a patient"
+      title="Visit summary"
       subtitle="One-call visit summary → /patients/{id}/summary (needs a grant)"
     >
-      <form onSubmit={load} className="flex gap-2 mb-3">
-        <input
-          value={patientIdRaw}
-          onChange={(e) => setPatientIdRaw(e.target.value)}
-          placeholder="Patient id"
-          className="bg-card border border-foreground/20 px-2 py-1.5 text-sm font-semibold"
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="px-4 py-2 text-[11px] uppercase tracking-wider font-extrabold bg-[color:var(--mint-deep)] disabled:opacity-50"
-        >
-          {busy ? "Loading…" : "Open"}
-        </button>
-      </form>
       <ErrorNote error={error} />
-
-      {summary && loadedId != null && (
+      {loading && !summary ? (
+        <Empty>Loading…</Empty>
+      ) : !summary ? null : (
         <div className="flex flex-col gap-4">
           <div className="border border-foreground/15 bg-card px-3 py-2 rounded-md">
-            <div className="font-serif text-lg font-black">
-              {summary.full_name}
-            </div>
+            <div className="font-serif text-lg font-black">{summary.full_name}</div>
             <div className="text-[12px] opacity-70">
               {summary.age != null ? `${summary.age} yrs · ` : ""}
               {summary.blood_group ? `${summary.blood_group} · ` : ""}
@@ -673,34 +554,19 @@ function PatientViewer({ categories }: { categories: Category[] }) {
           </div>
 
           <SummaryList title="Allergies" items={summary.allergies} tone="pink" />
-          <SummaryList
-            title="Chronic conditions"
-            items={summary.chronic_conditions}
-            tone="amber"
-          />
-          <SummaryList
-            title="Medications"
-            items={summary.medications}
-            tone="mint"
-          />
+          <SummaryList title="Chronic conditions" items={summary.chronic_conditions} tone="amber" />
+          <SummaryList title="Medications" items={summary.medications} tone="mint" />
 
           <div>
-            <h3 className="font-serif text-base font-black mb-1">
-              Latest vitals
-            </h3>
+            <h3 className="font-serif text-base font-black mb-1">Latest vitals</h3>
             {summary.latest_vitals.length === 0 ? (
               <Empty>None on record.</Empty>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {summary.latest_vitals.map((v) => (
-                  <div
-                    key={v.id}
-                    className="border border-foreground/15 bg-card px-2 py-1 rounded"
-                  >
-                    <span className="font-bold">
-                      {v.metric.replace(/_/g, " ")}
-                    </span>
-                    : {v.value_num ?? v.value_text}
+                  <div key={v.id} className="border border-foreground/15 bg-card px-2 py-1 rounded">
+                    <span className="font-bold">{v.metric.replace(/_/g, " ")}</span>:{" "}
+                    {v.value_num ?? v.value_text}
                     {v.unit ? ` ${v.unit}` : ""}
                   </div>
                 ))}
@@ -709,9 +575,7 @@ function PatientViewer({ categories }: { categories: Category[] }) {
           </div>
 
           <div>
-            <h3 className="font-serif text-base font-black mb-1">
-              Recent assessments
-            </h3>
+            <h3 className="font-serif text-base font-black mb-1">Recent assessments</h3>
             {summary.recent_assessments.length === 0 ? (
               <Empty>None visible with your current grants.</Empty>
             ) : (
@@ -735,8 +599,6 @@ function PatientViewer({ categories }: { categories: Category[] }) {
               </ul>
             )}
           </div>
-
-          <CategoryHistory patientId={loadedId} categories={categories} />
         </div>
       )}
     </Panel>
@@ -771,7 +633,9 @@ function SummaryList({
   );
 }
 
-function CategoryHistory({
+// ---------------- Full history by category (doctor view) ----------------
+
+export function CategoryHistory({
   patientId,
   categories,
 }: {
@@ -780,18 +644,13 @@ function CategoryHistory({
 }) {
   const [code, setCode] = useState("");
   const { data, loading, error, reload } = useAsync(
-    () =>
-      code
-        ? api.doctorPatientHistory(patientId, code)
-        : Promise.resolve(null),
+    () => (code ? api.doctorPatientHistory(patientId, code) : Promise.resolve(null)),
     [patientId, code],
   );
 
   return (
     <div>
-      <h3 className="font-serif text-base font-black mb-1">
-        Full history by category
-      </h3>
+      <h3 className="font-serif text-base font-black mb-1">Full history by category</h3>
       <div className="flex gap-2 mb-2">
         <select
           value={code}
@@ -823,18 +682,12 @@ function CategoryHistory({
       ) : (
         <ul className="flex flex-col gap-1">
           {data.map((a) => (
-            <li
-              key={a.id}
-              className="border border-foreground/15 bg-card px-3 py-2 rounded-md"
-            >
+            <li key={a.id} className="border border-foreground/15 bg-card px-3 py-2 rounded-md">
               <div className="font-bold">
-                {a.final_diagnosis_icd10 || a.clinical_diagnosis_icd10}{" "}
-                {a.diagnosis_description}
+                {a.final_diagnosis_icd10 || a.clinical_diagnosis_icd10} {a.diagnosis_description}
               </div>
               {a.treatment_notes && (
-                <div className="text-[12px] opacity-70">
-                  Tx: {a.treatment_notes}
-                </div>
+                <div className="text-[12px] opacity-70">Tx: {a.treatment_notes}</div>
               )}
               <div className="text-[10px] opacity-50">
                 {fmtDate(a.visit_date)} · {a.episode_type.replace(/_/g, " ")}

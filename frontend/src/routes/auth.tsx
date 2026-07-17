@@ -10,10 +10,7 @@ export const Route = createFileRoute("/auth")({
   },
   component: AuthPage,
   head: () => ({
-    meta: [
-      { title: "Sign in — Zrunva Health Passport" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Sign in — Zrunva Health Passport" }, { name: "robots", content: "noindex" }],
   }),
 });
 
@@ -61,9 +58,7 @@ function AuthPage() {
           full_name: fullName.trim(),
           specialty: role === "doctor" ? specialty.trim() : null,
           personal_number:
-            role === "patient" && personalNumber.trim()
-              ? personalNumber.trim()
-              : null,
+            role === "patient" && personalNumber.trim() ? personalNumber.trim() : null,
         });
       } else {
         user = await auth.login(parsed.data.email, parsed.data.password);
@@ -76,7 +71,9 @@ function AuthPage() {
         );
         return;
       }
-      navigate({ to: user.role === "doctor" ? "/clinic" : "/" });
+      // Both roles land on "/": patients see their dashboard, doctors the
+      // patient search page.
+      navigate({ to: "/" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
@@ -174,9 +171,7 @@ function AuthPage() {
             </label>
           )}
           <label className="block">
-            <span className="text-[11px] uppercase tracking-[0.18em] font-extrabold">
-              Email
-            </span>
+            <span className="text-[11px] uppercase tracking-[0.18em] font-extrabold">Email</span>
             <input
               type="email"
               required
@@ -188,9 +183,7 @@ function AuthPage() {
             />
           </label>
           <label className="block">
-            <span className="text-[11px] uppercase tracking-[0.18em] font-extrabold">
-              Password
-            </span>
+            <span className="text-[11px] uppercase tracking-[0.18em] font-extrabold">Password</span>
             <input
               type="password"
               required
@@ -214,11 +207,7 @@ function AuthPage() {
             disabled={busy}
             className="w-full px-3 py-2 text-[12px] uppercase tracking-wider font-extrabold bg-[color:var(--mint-deep)] disabled:opacity-50"
           >
-            {busy
-              ? "Please wait…"
-              : mode === "signin"
-                ? "Sign in"
-                : "Create account"}
+            {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
 
@@ -230,9 +219,7 @@ function AuthPage() {
           }}
           className="text-sm font-bold underline"
         >
-          {mode === "signin"
-            ? "Need an account? Create one"
-            : "Already have an account? Sign in"}
+          {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
         </button>
       </div>
     </main>
