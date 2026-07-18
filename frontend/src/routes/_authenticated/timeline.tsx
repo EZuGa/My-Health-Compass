@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { api, type TimelineEvent } from "@/lib/api";
+import { qk } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useAsync, ErrorNote, Empty, Pill, fmtDateTime } from "@/components/backend/ui";
 
@@ -23,9 +24,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 function Timeline() {
   const patientId = usePatientId();
   const [filter, setFilter] = useState<Filter>("all");
-  const { data, loading, error } = useAsync(
-    () => (patientId ? api.timeline(patientId) : Promise.resolve([] as TimelineEvent[])),
-    [patientId],
+  const { data, loading, error } = useAsync(qk.timeline(patientId), () =>
+    patientId ? api.timeline(patientId) : Promise.resolve([] as TimelineEvent[]),
   );
 
   const events = useMemo(
@@ -34,7 +34,13 @@ function Timeline() {
   );
 
   const tone = (t: string) =>
-    t === "assessment" ? "pink" : t === "observation" ? "mint" : t === "document" ? "amber" : "gray";
+    t === "assessment"
+      ? "pink"
+      : t === "observation"
+        ? "mint"
+        : t === "document"
+          ? "amber"
+          : "gray";
 
   return (
     <AppShell>
@@ -43,15 +49,15 @@ function Timeline() {
       </Link>
       <h1 className="mt-2 font-serif text-4xl">Clinical Timeline</h1>
       <p className="mt-2 max-w-3xl">
-        One chronological record — every assessment, measurement, document and
-        history item, straight from your backend health record.
+        One chronological record — every assessment, measurement, document and history item,
+        straight from your backend health record.
       </p>
 
       <nav className="mt-5 flex flex-wrap gap-2">
         {FILTERS.map((f) => {
           const count =
             f.key === "all"
-              ? data?.length ?? 0
+              ? (data?.length ?? 0)
               : (data ?? []).filter((e) => e.event_type === f.key).length;
           return (
             <button
@@ -59,7 +65,9 @@ function Timeline() {
               type="button"
               onClick={() => setFilter(f.key)}
               className={`px-3 py-1.5 text-[11px] uppercase tracking-wider font-extrabold rounded-md border border-foreground/30 ${
-                filter === f.key ? "bg-[color:var(--mint-deep)]" : "hover:bg-[color:var(--mint-soft)]"
+                filter === f.key
+                  ? "bg-[color:var(--mint-deep)]"
+                  : "hover:bg-[color:var(--mint-soft)]"
               }`}
             >
               {f.label} ({count})

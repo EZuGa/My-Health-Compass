@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Panel,
   StatTile,
@@ -10,6 +11,7 @@ import {
   fmtDateTime,
 } from "@/components/backend/ui";
 import { api, type Category, type EpisodeType, type PatientSummary } from "@/lib/api";
+import { invalidateAccess, invalidateAssessments, qk } from "@/lib/queries";
 
 // Panels used by the doctor-facing pages: the search/home page (overview,
 // access & consent) and the per-patient Assessments page. Extracted from the
@@ -24,7 +26,7 @@ export function DoctorDashboard({
 }: {
   onOpenPatient?: (p: { id: number; name: string }) => void;
 }) {
-  const { data, loading, error } = useAsync(() => api.doctorDashboard(), []);
+  const { data, loading, error } = useAsync(qk.doctorDashboard, () => api.doctorDashboard());
   return (
     <Panel title="My practice" subtitle="/dashboard/doctor">
       <ErrorNote error={error} />
@@ -139,7 +141,9 @@ export function DoctorDashboard({
 // ---------------- Outgoing access requests ----------------
 
 export function OutgoingRequests() {
-  const { data, loading, error, reload } = useAsync(() => api.outgoingRequests(), []);
+  const { data, loading, error, reload } = useAsync(qk.outgoingRequests, () =>
+    api.outgoingRequests(),
+  );
   const tone = (s: string) => (s === "approved" ? "mint" : s === "pending" ? "amber" : "gray");
   return (
     <Panel
@@ -188,7 +192,7 @@ export function OutgoingRequests() {
 // ---------------- My assessments (+ image upload) ----------------
 
 export function MyAssessments() {
-  const { data, loading, error, reload } = useAsync(() => api.myAssessments(), []);
+  const { data, loading, error, reload } = useAsync(qk.myAssessments, () => api.myAssessments());
   return (
     <Panel
       title="Assessments I've filed"
@@ -292,6 +296,7 @@ function ImageUploader({
 // ---------------- Request access ----------------
 
 export function RequestAccess({ categories }: { categories: Category[] }) {
+  const queryClient = useQueryClient();
   const [personalNumber, setPersonalNumber] = useState("");
   const [patientIdRaw, setPatientIdRaw] = useState("");
   const [categoryCode, setCategoryCode] = useState("");
@@ -320,6 +325,7 @@ export function RequestAccess({ categories }: { categories: Category[] }) {
       });
       setOk(`Request sent to ${r.patient_name ?? "patient"} — awaiting approval.`);
       setReason("");
+      invalidateAccess(queryClient);
     } catch (err) {
       setError(err);
     } finally {
@@ -387,6 +393,7 @@ export function SubmitAssessment({
   /** When set, the assessment targets this patient (input hidden). */
   fixedPatientId?: number;
 }) {
+  const queryClient = useQueryClient();
   const [patientId, setPatientId] = useState(fixedPatientId != null ? String(fixedPatientId) : "");
   const [categoryCode, setCategoryCode] = useState("");
   const [episode, setEpisode] = useState<EpisodeType>("outpatient");
@@ -428,6 +435,7 @@ export function SubmitAssessment({
       setDescription("");
       setTreatment("");
       setRecommendations("");
+      invalidateAssessments(queryClient, a.patient_id);
     } catch (err) {
       setError(err);
     } finally {
@@ -532,7 +540,7 @@ export function PatientSummaryView({ patientId }: { patientId: number }) {
     data: summary,
     loading,
     error,
-  } = useAsync<PatientSummary>(() => api.summary(patientId), [patientId]);
+  } = useAsync<PatientSummary>(qk.summary(patientId), () => api.summary(patientId));
 
   return (
     <Panel
@@ -644,8 +652,9 @@ export function CategoryHistory({
 }) {
   const [code, setCode] = useState("");
   const { data, loading, error, reload } = useAsync(
-    () => (code ? api.doctorPatientHistory(patientId, code) : Promise.resolve(null)),
-    [patientId, code],
+    qk.doctorHistory(patientId, code),
+    () => api.doctorPatientHistory(patientId, code),
+    { enabled: !!code },
   );
 
   return (

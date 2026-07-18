@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { useQueryClient } from "@tanstack/react-query";
 import { ingestData, transcribeAudio, type IngestResult } from "@/lib/ingest.functions";
 import { api } from "@/lib/api";
+import { invalidateObservations } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { getSectionLabel } from "@/lib/ingested";
 import { DropZone } from "@/components/DropZone";
@@ -53,6 +55,7 @@ function fileToDataUrl(f: File): Promise<string> {
 export function IngestionHub() {
   const ingest = useServerFn(ingestData);
   const stt = useServerFn(transcribeAudio);
+  const queryClient = useQueryClient();
   const patientId = usePatientId();
 
 
@@ -187,7 +190,10 @@ export function IngestionHub() {
               note: o.note ?? null,
             }),
           ),
-        ).catch((e) => console.warn("backend save failed", e));
+        )
+          // Refresh the views that read observations once the writes landed.
+          .then(() => invalidateObservations(queryClient, patientId))
+          .catch((e) => console.warn("backend save failed", e));
       }
     } catch (e: any) {
       setErr(e.message ?? "Ingestion failed");

@@ -5,6 +5,7 @@ import { MetricChart } from "@/components/MetricChart";
 import { DaliByBox } from "@/components/DaliArt";
 import type { Metric, Intervention } from "@/data/health";
 import { api, type Box, type Observation, type ProfileItem } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useAsync, ErrorNote } from "@/components/backend/ui";
 
@@ -39,20 +40,16 @@ function BoxDetail() {
   const { boxId } = Route.useParams();
   const patientId = usePatientId();
 
-  const boxesQ = useAsync<Box[]>(() => api.catalogBoxes(), []);
-  const obsQ = useAsync(
-    () =>
-      patientId
-        ? api.listObservations(patientId, { box: boxId })
-        : Promise.resolve([] as Observation[]),
-    [patientId, boxId],
+  const boxesQ = useAsync<Box[]>(qk.catalogBoxes, () => api.catalogBoxes(), {
+    staleTime: STATIC_STALE_TIME,
+  });
+  const obsQ = useAsync(qk.observations(patientId, "box", boxId), () =>
+    patientId
+      ? api.listObservations(patientId, { box: boxId })
+      : Promise.resolve([] as Observation[]),
   );
-  const profileQ = useAsync(
-    () =>
-      patientId
-        ? api.getProfile(patientId)
-        : Promise.resolve({} as Record<string, ProfileItem[]>),
-    [patientId],
+  const profileQ = useAsync(qk.profile(patientId), () =>
+    patientId ? api.getProfile(patientId) : Promise.resolve({} as Record<string, ProfileItem[]>),
   );
 
   const box = boxesQ.data?.find((b) => b.id === boxId);

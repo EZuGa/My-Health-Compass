@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Panel, Empty, ErrorNote, useAsync, fmtDateTime } from "./ui";
 import {
   api,
@@ -7,6 +8,7 @@ import {
   type MetricStats,
   type WearableSource,
 } from "@/lib/api";
+import { invalidateObservations, qk, STATIC_STALE_TIME } from "@/lib/queries";
 
 const WEARABLE_SOURCES: WearableSource[] = [
   "apple_health",
@@ -19,22 +21,24 @@ const WEARABLE_SOURCES: WearableSource[] = [
 ];
 
 export function VitalsTab({ patientId }: { patientId: number }) {
-  const categories = useAsync<Category[]>(() => api.listCategories(), []);
-  const latest = useAsync(() => api.latestVitals(patientId), [patientId]);
+  const queryClient = useQueryClient();
+  const categories = useAsync<Category[]>(qk.categories, () => api.listCategories(), {
+    staleTime: STATIC_STALE_TIME,
+  });
+  const latest = useAsync(qk.latestVitals(patientId), () => api.latestVitals(patientId));
+  // Reads added through any of these paths update every observation-driven
+  // view (vitals, charts, timeline, dashboards), not just this list.
+  const refresh = () => invalidateObservations(queryClient, patientId);
 
   return (
     <>
-      <LogReading
-        patientId={patientId}
-        categories={categories.data ?? []}
-        onSaved={() => latest.reload()}
-      />
-      <DeviceSync onSynced={() => latest.reload()} />
+      <LogReading patientId={patientId} categories={categories.data ?? []} onSaved={refresh} />
+      <DeviceSync onSynced={refresh} />
       <LatestVitals
         loading={latest.loading}
         error={latest.error}
         data={latest.data}
-        onDeleted={() => latest.reload()}
+        onDeleted={refresh}
       />
       <MetricTrend patientId={patientId} />
     </>
@@ -53,7 +57,6 @@ function LogReading({
   onSaved: () => void;
 }) {
   const [categoryCode, setCategoryCode] = useState("");
-  const [metrics, setMetrics] = useState<CategoryMetric[]>([]);
   const [metricCode, setMetricCode] = useState("");
   const [value, setValue] = useState("");
   const [observedAt, setObservedAt] = useState("");
@@ -63,23 +66,17 @@ function LogReading({
 
   const code = categoryCode || categories[0]?.code || "";
 
-  useEffect(() => {
-    if (!code) return;
-    let cancelled = false;
-    api
-      .categoryMetrics(code)
-      .then((m) => {
-        if (cancelled) return;
-        setMetrics(m);
-        setMetricCode(m[0]?.code ?? "");
-      })
-      .catch(() => !cancelled && setMetrics([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [code]);
+  // Metric catalogs are static reference data — fetched once per category and
+  // shared with every other component that needs them.
+  const metricsQ = useAsync<CategoryMetric[]>(
+    qk.categoryMetrics(code),
+    () => api.categoryMetrics(code),
+    { staleTime: STATIC_STALE_TIME, enabled: !!code },
+  );
+  const metrics = metricsQ.data ?? [];
 
-  const metric = metrics.find((m) => m.code === metricCode);
+  // No explicit metric picked yet (or the pick isn't in this category) → first.
+  const metric = metrics.find((m) => m.code === metricCode) ?? metrics[0];
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +105,10 @@ function LogReading({
   };
 
   return (
-    <Panel title="Log a reading" subtitle="Manual entry → POST /observations (metrics from /categories/{code}/metrics)">
+    <Panel
+      title="Log a reading"
+      subtitle="Manual entry → POST /observations (metrics from /categories/{code}/metrics)"
+    >
       <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-5 gap-2">
         <select
           value={code}
@@ -201,7 +201,10 @@ function DeviceSync({ onSynced }: { onSynced: () => void }) {
   };
 
   return (
-    <Panel title="Sync from a device" subtitle="Bulk-ingest from a connected platform → POST /wearables/sync">
+    <Panel
+      title="Sync from a device"
+      subtitle="Bulk-ingest from a connected platform → POST /wearables/sync"
+    >
       <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <select
           value={source}
@@ -258,7 +261,10 @@ function LatestVitals({
   onDeleted: () => void;
 }) {
   return (
-    <Panel title="Latest vitals" subtitle="Most recent value per metric → /patients/{id}/vitals/latest">
+    <Panel
+      title="Latest vitals"
+      subtitle="Most recent value per metric → /patients/{id}/vitals/latest"
+    >
       <ErrorNote error={error} />
       {loading && !data ? (
         <Empty>Loading…</Empty>
@@ -344,10 +350,7 @@ function MetricTrend({ patientId }: { patientId: number }) {
           <Stat label="min" value={stats.min ?? "—"} />
           <Stat label="avg" value={stats.avg ?? "—"} />
           <Stat label="max" value={stats.max ?? "—"} />
-          <Stat
-            label="latest"
-            value={stats.latest ? (stats.latest.value_num ?? "—") : "—"}
-          />
+          <Stat label="latest" value={stats.latest ? (stats.latest.value_num ?? "—") : "—"} />
         </div>
       )}
     </Panel>

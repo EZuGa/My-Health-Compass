@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { auth, isAuthed, type Role } from "@/lib/api";
+import { clearApiQueryCache } from "@/lib/queryClient";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -72,7 +73,9 @@ function AuthPage() {
         return;
       }
       // Both roles land on "/": patients see their dashboard, doctors the
-      // patient search page.
+      // patient search page. Clear any query data cached for a previous
+      // account first — nothing may leak across accounts.
+      clearApiQueryCache();
       navigate({ to: "/" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");

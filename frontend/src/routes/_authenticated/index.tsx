@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { DaliByBox } from "@/components/DaliArt";
 import { DoctorHome } from "@/components/DoctorHome";
 import { getCachedUser, api, type Box, type Observation } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useSelectedPatient } from "@/lib/selectedPatient";
 import { useAsync } from "@/components/backend/ui";
@@ -44,10 +45,11 @@ function Dashboard() {
   // Everything from the backend: the domain cards come from /catalog/boxes and
   // the latest value on each card from /vitals/latest (grouped by box).
   const patientId = usePatientId();
-  const boxesQ = useAsync<Box[]>(() => api.catalogBoxes(), []);
-  const vitals = useAsync(
-    () => (patientId ? api.latestVitals(patientId) : Promise.resolve([] as Observation[])),
-    [patientId],
+  const boxesQ = useAsync<Box[]>(qk.catalogBoxes, () => api.catalogBoxes(), {
+    staleTime: STATIC_STALE_TIME,
+  });
+  const vitals = useAsync(qk.latestVitals(patientId), () =>
+    patientId ? api.latestVitals(patientId) : Promise.resolve([] as Observation[]),
   );
   const latestByBox = useMemo(() => {
     const m: Record<string, Observation> = {};

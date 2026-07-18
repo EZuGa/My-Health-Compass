@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Panel, ErrorNote, Empty, useAsync } from "@/components/backend/ui";
 import { DoctorDashboard, OutgoingRequests, RequestAccess } from "@/components/doctor";
 import { api, type Category, type PatientSummary } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { setSelectedPatient } from "@/lib/selectedPatient";
 
 // Doctor landing page: find a patient (same lookup logic the old Clinical
@@ -12,7 +13,9 @@ import { setSelectedPatient } from "@/lib/selectedPatient";
 
 export function DoctorHome() {
   const navigate = useNavigate();
-  const categories = useAsync<Category[]>(() => api.listCategories(), []);
+  const categories = useAsync<Category[]>(qk.categories, () => api.listCategories(), {
+    staleTime: STATIC_STALE_TIME,
+  });
 
   const open = (p: { id: number; name: string }) => {
     setSelectedPatient(p);

@@ -10,6 +10,7 @@ import { useServerFn } from "@tanstack/react-start";
 
 import { fetchLiveInteractions } from "@/lib/drug-interactions.functions";
 import { api, type ProfileItem } from "@/lib/api";
+import { qk } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useAsync } from "@/components/backend/ui";
 
@@ -38,8 +39,14 @@ const INTERACTIONS: Interaction[] = [
     management:
       "Continue 81 mg for primary prevention. Monitor creatinine/eGFR and potassium 1–2 weeks after any dose change; avoid adding a loop/thiazide diuretic without re-checking renal function.",
     evidence: [
-      { label: "ACC/AHA 2017 Hypertension Guideline §9.2", url: "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065" },
-      { label: "Lapi F et al., BMJ 2013;346:e8525 (triple whammy & AKI)", url: "https://www.bmj.com/content/346/bmj.e8525" },
+      {
+        label: "ACC/AHA 2017 Hypertension Guideline §9.2",
+        url: "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065",
+      },
+      {
+        label: "Lapi F et al., BMJ 2013;346:e8525 (triple whammy & AKI)",
+        url: "https://www.bmj.com/content/346/bmj.e8525",
+      },
     ],
   },
   {
@@ -53,8 +60,14 @@ const INTERACTIONS: Interaction[] = [
     management:
       "Recheck eGFR with any lisinopril dose change. Hold metformin if eGFR < 30 or during acute illness with volume depletion.",
     evidence: [
-      { label: "FDA metformin label — Warnings (Lactic Acidosis)", url: "https://www.accessdata.fda.gov/drugsatfda_docs/label/2017/020357s037s039,021202s021s023lbl.pdf" },
-      { label: "Scheen AJ, Diabetes Care 2017 (RAAS & insulin sensitivity)", url: "https://diabetesjournals.org/care/article/40/12/1605/30038" },
+      {
+        label: "FDA metformin label — Warnings (Lactic Acidosis)",
+        url: "https://www.accessdata.fda.gov/drugsatfda_docs/label/2017/020357s037s039,021202s021s023lbl.pdf",
+      },
+      {
+        label: "Scheen AJ, Diabetes Care 2017 (RAAS & insulin sensitivity)",
+        url: "https://diabetesjournals.org/care/article/40/12/1605/30038",
+      },
     ],
   },
   {
@@ -68,7 +81,10 @@ const INTERACTIONS: Interaction[] = [
     management:
       "No dose adjustment required. Continue as primary-prevention combination per ACC/AHA risk stratification.",
     evidence: [
-      { label: "ACC/AHA 2018 Cholesterol Guideline", url: "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625" },
+      {
+        label: "ACC/AHA 2018 Cholesterol Guideline",
+        url: "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625",
+      },
     ],
   },
   {
@@ -82,8 +98,14 @@ const INTERACTIONS: Interaction[] = [
     management:
       "Continue current doses. Recheck 25-OH D every 6–12 months; investigate any new myalgia with CK before attributing to statin.",
     evidence: [
-      { label: "Pérez-Castrillón JL et al., Am J Cardiol 2007", url: "https://pubmed.ncbi.nlm.nih.gov/17996517/" },
-      { label: "Michalska-Kasiczak M et al., Int J Cardiol 2015 (meta-analysis)", url: "https://pubmed.ncbi.nlm.nih.gov/25827594/" },
+      {
+        label: "Pérez-Castrillón JL et al., Am J Cardiol 2007",
+        url: "https://pubmed.ncbi.nlm.nih.gov/17996517/",
+      },
+      {
+        label: "Michalska-Kasiczak M et al., Int J Cardiol 2015 (meta-analysis)",
+        url: "https://pubmed.ncbi.nlm.nih.gov/25827594/",
+      },
     ],
   },
   {
@@ -94,7 +116,10 @@ const INTERACTIONS: Interaction[] = [
     effect: "No clinically significant interaction reported.",
     management: "No action required.",
     evidence: [
-      { label: "Lexicomp / Micromedex interaction database", url: "https://www.uptodate.com/contents/search?search=atorvastatin+lisinopril" },
+      {
+        label: "Lexicomp / Micromedex interaction database",
+        url: "https://www.uptodate.com/contents/search?search=atorvastatin+lisinopril",
+      },
     ],
   },
   {
@@ -105,7 +130,10 @@ const INTERACTIONS: Interaction[] = [
     effect: "No clinically significant interaction.",
     management: "No action required.",
     evidence: [
-      { label: "FDA metformin label — Drug Interactions", url: "https://www.accessdata.fda.gov/drugsatfda_docs/label/2017/020357s037s039,021202s021s023lbl.pdf" },
+      {
+        label: "FDA metformin label — Drug Interactions",
+        url: "https://www.accessdata.fda.gov/drugsatfda_docs/label/2017/020357s037s039,021202s021s023lbl.pdf",
+      },
     ],
   },
 ];
@@ -139,12 +167,8 @@ function matchPair(drugs: Drug[]) {
 
 export function MedicationInteractions() {
   const patientId = usePatientId();
-  const profileQ = useAsync(
-    () =>
-      patientId
-        ? api.getProfile(patientId)
-        : Promise.resolve({} as Record<string, ProfileItem[]>),
-    [patientId],
+  const profileQ = useAsync(qk.profile(patientId), () =>
+    patientId ? api.getProfile(patientId) : Promise.resolve({} as Record<string, ProfileItem[]>),
   );
   const drugs = activeDrugs(profileQ.data ?? {});
   const pairs = matchPair(drugs);
@@ -155,7 +179,13 @@ export function MedicationInteractions() {
 
   const fetchLive = useServerFn(fetchLiveInteractions);
   const live = useQuery({
-    queryKey: ["live-interactions", drugs.map((d) => d.label).sort().join("|")],
+    queryKey: [
+      "live-interactions",
+      drugs
+        .map((d) => d.label)
+        .sort()
+        .join("|"),
+    ],
     queryFn: () => fetchLive({ data: { drugs: drugs.map((d) => d.label) } }),
     staleTime: 1000 * 60 * 10,
   });
@@ -166,8 +196,8 @@ export function MedicationInteractions() {
         Interaction screen across {drugs.length} active medications. The
         <span className="font-black"> curated</span> block is hand-verified against guidelines and
         FDA labels; the <span className="font-black">live FDA label</span> block pulls the
-        Drug-Interactions section of each medication's Structured Product Label from OpenFDA in
-        real time. Both update automatically as the medication list changes.
+        Drug-Interactions section of each medication's Structured Product Label from OpenFDA in real
+        time. Both update automatically as the medication list changes.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -205,20 +235,28 @@ export function MedicationInteractions() {
               </header>
               <dl className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">Mechanism</dt>
+                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">
+                    Mechanism
+                  </dt>
                   <dd className="mt-1 text-sm font-semibold leading-snug">{i.mechanism}</dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">Expected effect</dt>
+                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">
+                    Expected effect
+                  </dt>
                   <dd className="mt-1 text-sm font-semibold leading-snug">{i.effect}</dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">Management</dt>
+                  <dt className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">
+                    Management
+                  </dt>
                   <dd className="mt-1 text-sm font-semibold leading-snug">{i.management}</dd>
                 </div>
               </dl>
               <footer className="border-t border-foreground/20 pt-2 flex flex-wrap gap-x-4 gap-y-1">
-                <span className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">Evidence</span>
+                <span className="text-[10px] uppercase tracking-[0.18em] font-extrabold opacity-70">
+                  Evidence
+                </span>
                 {i.evidence.map((e) => (
                   <a
                     key={e.url}
@@ -277,10 +315,7 @@ export function MedicationInteractions() {
           </article>
         ))}
         {live.data?.errors.map((e) => (
-          <div
-            key={e.drug}
-            className="cloud-panel p-3 text-xs font-bold opacity-70"
-          >
+          <div key={e.drug} className="cloud-panel p-3 text-xs font-bold opacity-70">
             <span className="uppercase tracking-wider">{e.drug}</span> — {e.message}
           </div>
         ))}

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { Panel, Pill, ErrorNote, Empty, useAsync, fmtDateTime } from "@/components/backend/ui";
 import { api, type Observation } from "@/lib/api";
+import { invalidateObservations, qk } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 
 export const Route = createFileRoute("/_authenticated/intake")({
@@ -17,17 +19,15 @@ const EXAMPLES = [
 ];
 
 function IntakePage() {
+  const queryClient = useQueryClient();
   const patientId = usePatientId();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [lastParsedBy, setLastParsedBy] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
 
-  const recent = useAsync<Observation[]>(
-    () =>
-      patientId ? api.listObservations(patientId, { source_kind: "chat" }) : Promise.resolve([]),
-    [patientId, reloadKey],
+  const recent = useAsync<Observation[]>(qk.observations(patientId, "source", "chat"), () =>
+    patientId ? api.listObservations(patientId, { source_kind: "chat" }) : Promise.resolve([]),
   );
 
   const send = async (e: React.FormEvent) => {
@@ -39,7 +39,8 @@ function IntakePage() {
       const res = await api.intakeMessage(message.trim());
       setLastParsedBy(res.parsed_by);
       setMessage("");
-      setReloadKey((k) => k + 1);
+      // The intake wrote observations — refresh every view derived from them.
+      if (patientId) invalidateObservations(queryClient, patientId);
     } catch (err) {
       setError(err);
     } finally {

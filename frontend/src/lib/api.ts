@@ -9,6 +9,8 @@ export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
   "http://localhost:8000";
 
+import { clearApiQueryCache } from "./queryClient";
+
 const TOKEN_KEY = "hp.token";
 const USER_KEY = "hp.user";
 
@@ -260,6 +262,9 @@ export function clearToken() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  // Wipe the React Query cache too — nothing fetched for the previous
+  // session may leak into the next one (sign-out, 401, account switch).
+  clearApiQueryCache();
 }
 
 export function isAuthed(): boolean {

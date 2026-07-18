@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import {
   Panel,
@@ -18,6 +19,13 @@ import {
   type ProfileItem,
   type ProfileItemType,
 } from "@/lib/api";
+import {
+  invalidateAccess,
+  invalidateDocuments,
+  invalidateProfile,
+  qk,
+  STATIC_STALE_TIME,
+} from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useSelectedPatient } from "@/lib/selectedPatient";
 import { VitalsTab } from "@/components/backend/VitalsTab";
@@ -48,10 +56,10 @@ function RecordsPage() {
   // A doctor with an open patient sees that patient's record; the patient-only
   // tabs (own dashboard, own history, consent inbox) get doctor equivalents.
   const doctorView = getCachedUser()?.role === "doctor" && selected != null;
-  const categories = useAsync<Category[]>(
-    () => (doctorView ? api.listCategories() : Promise.resolve([])),
-    [doctorView],
-  );
+  const categories = useAsync<Category[]>(qk.categories, () => api.listCategories(), {
+    staleTime: STATIC_STALE_TIME,
+    enabled: doctorView,
+  });
   const tabs = doctorView ? TABS.filter((t) => t.id !== "access") : TABS;
 
   return (
@@ -120,7 +128,7 @@ function RecordsPage() {
 // ---------------- Overview (patient dashboard) ----------------
 
 function Overview() {
-  const { data, loading, error } = useAsync(() => api.patientDashboard(), []);
+  const { data, loading, error } = useAsync(qk.patientDashboard, () => api.patientDashboard());
   return (
     <Panel title="Overview" subtitle="Snapshot from /dashboard/patient">
       <ErrorNote error={error} />
@@ -209,7 +217,8 @@ const ITEM_TYPES: { id: ProfileItemType; label: string }[] = [
 ];
 
 function ProfileTab({ patientId }: { patientId: number }) {
-  const { data, loading, error, reload } = useAsync(() => api.getProfile(patientId), [patientId]);
+  const queryClient = useQueryClient();
+  const { data, loading, error } = useAsync(qk.profile(patientId), () => api.getProfile(patientId));
   const [itemType, setItemType] = useState<ProfileItemType>("allergy");
   const [name, setName] = useState("");
   const [detail, setDetail] = useState("");
@@ -232,7 +241,7 @@ function ProfileTab({ patientId }: { patientId: number }) {
       setName("");
       setDetail("");
       setOccurredOn("");
-      reload();
+      invalidateProfile(queryClient, patientId);
     } catch (err) {
       setFormError(err);
     } finally {
@@ -242,7 +251,7 @@ function ProfileTab({ patientId }: { patientId: number }) {
 
   const remove = async (id: number) => {
     await api.deleteProfileItem(id);
-    reload();
+    invalidateProfile(queryClient, patientId);
   };
 
   const grouped = data ?? {};
@@ -346,9 +355,9 @@ function ProfileTab({ patientId }: { patientId: number }) {
 // ---------------- Documents ----------------
 
 function DocumentsTab({ patientId }: { patientId: number }) {
-  const { data, loading, error, reload } = useAsync(
-    () => api.listDocuments(patientId),
-    [patientId],
+  const queryClient = useQueryClient();
+  const { data, loading, error } = useAsync(qk.documents(patientId), () =>
+    api.listDocuments(patientId),
   );
   const [file, setFile] = useState<File | null>(null);
   const [summary, setSummary] = useState("");
@@ -367,7 +376,7 @@ function DocumentsTab({ patientId }: { patientId: number }) {
       await api.uploadDocument(fd);
       setFile(null);
       setSummary("");
-      reload();
+      invalidateDocuments(queryClient, patientId);
     } catch (err) {
       setFormError(err);
     } finally {
@@ -434,7 +443,7 @@ function DocumentsTab({ patientId }: { patientId: number }) {
                   type="button"
                   onClick={async () => {
                     await api.deleteDocument(d.id);
-                    reload();
+                    invalidateDocuments(queryClient, patientId);
                   }}
                   className="text-[11px] font-bold underline opacity-60 hover:opacity-100"
                 >
@@ -452,7 +461,7 @@ function DocumentsTab({ patientId }: { patientId: number }) {
 // ---------------- Timeline ----------------
 
 function TimelineTab({ patientId }: { patientId: number }) {
-  const { data, loading, error } = useAsync(() => api.timeline(patientId), [patientId]);
+  const { data, loading, error } = useAsync(qk.timeline(patientId), () => api.timeline(patientId));
   const toneFor = (t: string) =>
     t === "assessment"
       ? "pink"
@@ -492,15 +501,15 @@ function TimelineTab({ patientId }: { patientId: number }) {
 // ---------------- Access requests (incoming) ----------------
 
 function AccessTab() {
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("pending");
-  const { data, loading, error, reload } = useAsync(
-    () => api.incomingRequests(statusFilter),
-    [statusFilter],
+  const { data, loading, error } = useAsync(qk.incomingRequests(statusFilter), () =>
+    api.incomingRequests(statusFilter),
   );
 
   const act = async (fn: () => Promise<unknown>) => {
     await fn();
-    reload();
+    invalidateAccess(queryClient);
   };
 
   return (

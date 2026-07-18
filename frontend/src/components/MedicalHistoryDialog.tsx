@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAsync, fmtDate } from "@/components/backend/ui";
 import { api, getCachedUser, type ProfileItem } from "@/lib/api";
+import { qk } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 
 // Anamnesis vitae, served from the backend for the signed-in patient.
@@ -27,21 +28,30 @@ function ageFrom(dob: string | null): number | null {
 export function MedicalHistoryDialog() {
   const patientId = usePatientId();
   const articleRef = useRef<HTMLElement | null>(null);
+  // Nothing here is fetched until the dialog is actually opened — this
+  // component is mounted in the sidebar of every page.
+  const [open, setOpen] = useState(false);
 
   const profile = useAsync(
+    qk.profile(patientId),
     () =>
-      patientId
-        ? api.getProfile(patientId)
-        : Promise.resolve({} as Record<string, ProfileItem[]>),
-    [patientId],
+      patientId ? api.getProfile(patientId) : Promise.resolve({} as Record<string, ProfileItem[]>),
+    { enabled: open },
   );
+  // /patients/me/history is patient-only; for a doctor viewing a patient's
+  // record it 403s, and an errored query refetches on every mount.
+  const isPatient = getCachedUser()?.role === "patient";
   const history = useAsync(
+    qk.myHistory,
     () => (patientId ? api.myHistory() : Promise.resolve([])),
-    [patientId],
+    {
+      enabled: open && isPatient,
+    },
   );
   const vitals = useAsync(
+    qk.latestVitals(patientId),
     () => (patientId ? api.latestVitals(patientId) : Promise.resolve([])),
-    [patientId],
+    { enabled: open },
   );
 
   const user = getCachedUser();
@@ -52,7 +62,8 @@ export function MedicalHistoryDialog() {
     const html = articleRef.current.innerHTML;
     const win = window.open("", "_blank", "width=900,height=1200");
     if (!win) return;
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Medical History — ${user?.full_name ?? "Patient"}</title>
+    win.document
+      .write(`<!doctype html><html><head><meta charset="utf-8"><title>Medical History — ${user?.full_name ?? "Patient"}</title>
 <style>
   @page { margin: 18mm; }
   body { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 12pt; line-height: 1.55; color: #111; }
@@ -73,12 +84,15 @@ ${html}
   const loading = profile.loading || history.loading || vitals.loading;
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
           className="w-full text-center text-xs uppercase tracking-[0.18em] font-extrabold py-2 rounded-md cloud-panel cursor-pointer"
-          style={{ background: "linear-gradient(160deg, #ece3ff 0%, #c9b8ee 100%)", color: "#3a2a55" }}
+          style={{
+            background: "linear-gradient(160deg, #ece3ff 0%, #c9b8ee 100%)",
+            color: "#3a2a55",
+          }}
         >
           Medical History
         </button>
@@ -95,7 +109,10 @@ ${html}
             type="button"
             onClick={downloadPdf}
             className="text-[11px] uppercase tracking-[0.18em] font-extrabold px-3 py-1.5 rounded-md cloud-panel"
-            style={{ background: "linear-gradient(160deg, #ece3ff 0%, #c9b8ee 100%)", color: "#3a2a55" }}
+            style={{
+              background: "linear-gradient(160deg, #ece3ff 0%, #c9b8ee 100%)",
+              color: "#3a2a55",
+            }}
           >
             Download PDF
           </button>
@@ -116,9 +133,7 @@ ${html}
           ref={articleRef as never}
           className="mt-4 font-serif text-[15px] leading-[1.75] font-medium text-foreground space-y-5"
         >
-          {loading && (
-            <p className="italic opacity-70">Loading your record from the backend…</p>
-          )}
+          {loading && <p className="italic opacity-70">Loading your record from the backend…</p>}
 
           <SectionHeading>Patient Identification</SectionHeading>
           <DefList
@@ -165,8 +180,7 @@ ${html}
             <ul className="list-none pl-0 space-y-1">
               {vitals.data.map((o) => (
                 <li key={o.id}>
-                  <strong>{o.metric.replace(/_/g, " ")}:</strong>{" "}
-                  {o.value_num ?? o.value_text}
+                  <strong>{o.metric.replace(/_/g, " ")}:</strong> {o.value_num ?? o.value_text}
                   {o.unit ? ` ${o.unit}` : ""}{" "}
                   <span className="opacity-60 text-[13px]">
                     ({fmtDate(o.observed_at)} · {o.source_kind ?? "manual"})
@@ -206,14 +220,14 @@ ${html}
             </div>
           ) : (
             <Empty>
-              No clinical assessments yet. They appear here once a doctor you've
-              granted access files one.
+              No clinical assessments yet. They appear here once a doctor you've granted access
+              files one.
             </Empty>
           )}
 
           <p className="pt-4 border-t border-foreground/30 text-xs uppercase tracking-[0.18em] font-extrabold">
-            Generated from your Health Passport record. Add or edit items under
-            Health Records › Medical History.
+            Generated from your Health Passport record. Add or edit items under Health Records ›
+            Medical History.
           </p>
         </article>
       </DialogContent>
@@ -234,9 +248,7 @@ function DefList({ items }: { items: [string, string][] }) {
     <dl className="grid grid-cols-1 sm:grid-cols-[minmax(0,14rem)_1fr] gap-x-6 gap-y-1">
       {items.map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="font-extrabold uppercase tracking-[0.06em] text-[12px] pt-1">
-            {k}
-          </dt>
+          <dt className="font-extrabold uppercase tracking-[0.06em] text-[12px] pt-1">{k}</dt>
           <dd className="pt-1">{v}</dd>
         </div>
       ))}
@@ -244,13 +256,7 @@ function DefList({ items }: { items: [string, string][] }) {
   );
 }
 
-function ProfileList({
-  items,
-  empty,
-}: {
-  items: ProfileItem[] | undefined;
-  empty: string;
-}) {
+function ProfileList({ items, empty }: { items: ProfileItem[] | undefined; empty: string }) {
   if (!items || items.length === 0) return <Empty>{empty}</Empty>;
   return (
     <ul className="list-none pl-0 space-y-1">

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api, type CalendarEvent } from "@/lib/api";
+import { qk } from "@/lib/queries";
+import { useAsync } from "@/components/backend/ui";
 
 type Tab = "all" | "medications" | "appointments" | "reminders";
 
@@ -18,11 +20,8 @@ function CalendarPage() {
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState<string>(() => ymd(new Date()));
   const [tab, setTab] = useState<Tab>("all");
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-
-  useEffect(() => {
-    api.calendar().then(setEvents).catch(() => setEvents([]));
-  }, []);
+  const { data: eventsData } = useAsync<CalendarEvent[]>(qk.calendar, () => api.calendar());
+  const events = eventsData ?? [];
 
   const monthGrid = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -30,7 +29,8 @@ function CalendarPage() {
     const daysInMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
     const cells: (Date | null)[] = [];
     for (let i = 0; i < startWeekday; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(cursor.getFullYear(), cursor.getMonth(), d));
+    for (let d = 1; d <= daysInMonth; d++)
+      cells.push(new Date(cursor.getFullYear(), cursor.getMonth(), d));
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [cursor]);
@@ -39,9 +39,7 @@ function CalendarPage() {
     // Medications recur daily from their start date; appointments/reminders
     // are single-day. All events come from the backend calendar.
     const all = events
-      .filter((e) =>
-        e.kind === "medication" ? e.event_date <= dateStr : e.event_date === dateStr,
-      )
+      .filter((e) => (e.kind === "medication" ? e.event_date <= dateStr : e.event_date === dateStr))
       .map((e) => ({
         kind: e.kind,
         time: e.event_time ?? "—",
@@ -129,7 +127,9 @@ function CalendarPage() {
           </div>
           <div className="grid grid-cols-7 gap-1 text-[11px] uppercase tracking-widest opacity-70 mb-1">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d} className="text-center py-1">{d}</div>
+              <div key={d} className="text-center py-1">
+                {d}
+              </div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -184,8 +184,8 @@ function CalendarPage() {
                   e.kind === "medication"
                     ? { bg: "#f6d4dc", border: "#e9b8c4" } // soft flamingo
                     : e.kind === "appointment"
-                    ? { bg: "#f4cad4", border: "#e3aebd" } // slightly deeper flamingo
-                    : { bg: "#f8dde3", border: "#edc1cd" }; // palest flamingo
+                      ? { bg: "#f4cad4", border: "#e3aebd" } // slightly deeper flamingo
+                      : { bg: "#f8dde3", border: "#edc1cd" }; // palest flamingo
                 return (
                   <li
                     key={i}
@@ -195,7 +195,9 @@ function CalendarPage() {
                     <span className="font-mono text-sm w-14 shrink-0">{e.time}</span>
                     <div>
                       <div className="text-sm font-semibold">{e.label}</div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] opacity-60">{e.kind}</div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] opacity-60">
+                        {e.kind}
+                      </div>
                     </div>
                   </li>
                 );

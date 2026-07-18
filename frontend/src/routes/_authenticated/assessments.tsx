@@ -3,6 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { Panel, Empty, useAsync } from "@/components/backend/ui";
 import { CategoryHistory, MyAssessments, SubmitAssessment } from "@/components/doctor";
 import { api, getCachedUser, type Category } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { useSelectedPatient } from "@/lib/selectedPatient";
 
 export const Route = createFileRoute("/_authenticated/assessments")({
@@ -16,7 +17,9 @@ export const Route = createFileRoute("/_authenticated/assessments")({
 function AssessmentsPage() {
   const user = getCachedUser();
   const selected = useSelectedPatient();
-  const categories = useAsync<Category[]>(() => api.listCategories(), []);
+  const categories = useAsync<Category[]>(qk.categories, () => api.listCategories(), {
+    staleTime: STATIC_STALE_TIME,
+  });
 
   if (user && user.role !== "doctor") {
     return (

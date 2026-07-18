@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { MetricChart } from "@/components/MetricChart";
 import type { Metric, Intervention } from "@/data/health";
 import { api, type CategoryMetric, type Observation, type ProfileItem } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
 import { useAsync, ErrorNote } from "@/components/backend/ui";
 
@@ -22,7 +23,11 @@ function interventionsFromProfile(profile: Record<string, ProfileItem[]>): Inter
   for (const items of Object.values(profile)) {
     for (const it of items) {
       if (!it.occurred_on) continue;
-      out.push({ date: it.occurred_on, label: it.name, kind: kindMap[it.item_type] ?? "lifestyle" });
+      out.push({
+        date: it.occurred_on,
+        label: it.name,
+        kind: kindMap[it.item_type] ?? "lifestyle",
+      });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
@@ -32,20 +37,16 @@ function DiagnosticDetail() {
   const { metricId } = Route.useParams();
   const patientId = usePatientId();
 
-  const metricsQ = useAsync<CategoryMetric[]>(() => api.catalogMetrics(), []);
-  const obsQ = useAsync(
-    () =>
-      patientId
-        ? api.listObservations(patientId, { metric: metricId })
-        : Promise.resolve([] as Observation[]),
-    [patientId, metricId],
+  const metricsQ = useAsync<CategoryMetric[]>(qk.catalogMetrics, () => api.catalogMetrics(), {
+    staleTime: STATIC_STALE_TIME,
+  });
+  const obsQ = useAsync(qk.observations(patientId, "metric", metricId), () =>
+    patientId
+      ? api.listObservations(patientId, { metric: metricId })
+      : Promise.resolve([] as Observation[]),
   );
-  const profileQ = useAsync(
-    () =>
-      patientId
-        ? api.getProfile(patientId)
-        : Promise.resolve({} as Record<string, ProfileItem[]>),
-    [patientId],
+  const profileQ = useAsync(qk.profile(patientId), () =>
+    patientId ? api.getProfile(patientId) : Promise.resolve({} as Record<string, ProfileItem[]>),
   );
 
   const cm = metricsQ.data?.find((m) => m.code === metricId);

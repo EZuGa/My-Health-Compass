@@ -1,7 +1,8 @@
 // Small shared building blocks for the backend-driven pages (Health Records,
 // Clinician Console, AI Intake). Kept intentionally lightweight and on-brand
 // with the existing cloud-panel / mint styling.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 
 export function Panel({
@@ -21,9 +22,7 @@ export function Panel({
         <header className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
           <div>
             {title && <h2 className="font-serif text-xl font-black">{title}</h2>}
-            {subtitle && (
-              <p className="text-[12px] font-semibold opacity-70">{subtitle}</p>
-            )}
+            {subtitle && <p className="text-[12px] font-semibold opacity-70">{subtitle}</p>}
           </div>
           {right}
         </header>
@@ -92,33 +91,39 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
-/** Minimal data hook: runs an async loader, tracks loading/error, and exposes reload(). */
+/** Data hook backed by React Query: one request + one cache entry per
+ * `queryKey` (see `lib/queries.ts` — components asking for the same key share
+ * both). Cached data is reused across pages within the stale time; `reload()`
+ * invalidates the key and refetches. */
 export function useAsync<T>(
+  queryKey: readonly unknown[],
   loader: () => Promise<T>,
-  deps: unknown[] = [],
+  options?: { staleTime?: number; enabled?: boolean },
 ): { data: T | null; loading: boolean; error: unknown; reload: () => void } {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
-  const [tick, setTick] = useState(0);
-
-  const reload = useCallback(() => setTick((t) => t + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    loader()
-      .then((d) => !cancelled && setData(d))
-      .catch((e) => !cancelled && setError(e))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
-
-  return { data, loading, error, reload };
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey,
+    queryFn: loader,
+    // Only override the QueryClient defaults when a value is actually given:
+    // passing `staleTime: undefined` would ERASE the default staleTime and
+    // make the query refetch on every mount (React Query spreads options over
+    // defaults verbatim).
+    ...(options?.staleTime !== undefined ? { staleTime: options.staleTime } : {}),
+    ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
+    // Keep showing the previous key's data while the new one loads.
+    placeholderData: keepPreviousData,
+  });
+  const reload = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey }),
+    [queryClient, queryKey],
+  );
+  return {
+    data: query.data ?? null,
+    // Not "loading" when the query is merely disabled (fetchStatus "idle").
+    loading: (query.isPending && query.fetchStatus !== "idle") || query.isPlaceholderData,
+    error: query.error,
+    reload,
+  };
 }
 
 export function fmtDate(iso: string | null | undefined): string {

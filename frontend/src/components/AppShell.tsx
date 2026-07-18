@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { Search, Menu, X } from "lucide-react";
 import { SearchDialog } from "./SearchDialog";
@@ -8,7 +8,8 @@ import { MedicalHistoryDialog } from "./MedicalHistoryDialog";
 import { SubspecialtyDialog } from "./SubspecialtyDialog";
 import { LogoMark } from "./LogoMark";
 import { GlobalDisclaimer } from "./GlobalDisclaimer";
-import { auth, getCachedUser, api, type Section } from "@/lib/api";
+import { auth, getCachedUser, api } from "@/lib/api";
+import { qk, STATIC_STALE_TIME } from "@/lib/queries";
 import { useSelectedPatient, setSelectedPatient } from "@/lib/selectedPatient";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -17,18 +18,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(getCachedUser()?.role ?? null);
-  const [sections, setSections] = useState<Section[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // The patient a doctor currently has open; drives the nav and the banner.
   const selected = useSelectedPatient();
 
-  useEffect(() => {
-    api
-      .catalogSections()
-      .then(setSections)
-      .catch(() => setSections([]));
-  }, []);
+  // Sidebar sections are static catalog data — one fetch per app session.
+  const { data: sectionsData } = useQuery({
+    queryKey: qk.catalogSections,
+    queryFn: () => api.catalogSections(),
+    staleTime: STATIC_STALE_TIME,
+  });
+  const sections = sectionsData ?? [];
 
   useEffect(() => {
     const cached = getCachedUser();
