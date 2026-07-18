@@ -18,6 +18,7 @@ export const qk = {
   patientDashboard: ["dashboard", "patient"] as const,
   doctorDashboard: ["dashboard", "doctor"] as const,
   myHistory: ["history", "me"] as const,
+  patientHistory: (patientId: number | null) => ["history", "grouped", patientId] as const,
   doctorHistory: (patientId: number, code: string) => ["history", patientId, code] as const,
   summary: (patientId: number) => ["summary", patientId] as const,
   documents: (patientId: number | null) => ["documents", patientId] as const,

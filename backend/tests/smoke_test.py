@@ -245,7 +245,8 @@ with TestClient(app) as c:
 
     # ===== consent flow =====
     for path in [f"/doctors/patients/{pid}/history/cardiology", f"/patients/{pid}/profile",
-                 f"/patients/{pid}/observations", f"/patients/{pid}/timeline", f"/images/{img_id}"]:
+                 f"/patients/{pid}/history", f"/patients/{pid}/observations",
+                 f"/patients/{pid}/timeline", f"/images/{img_id}"]:
         r = c.get(path, headers=D2)
         ok(r, 403, "blocked without grant")
 
@@ -268,6 +269,15 @@ with TestClient(app) as c:
     ok(r, 200, "granted category history")
     assert r.json()[0]["clinical_diagnosis_icd10"] == "I20.8"
 
+    r = c.get(f"/patients/{pid}/history", headers=P)
+    ok(r, 200, "patient grouped history (self)")
+    mine = c.get("/patients/me/history", headers=P)
+    ok(mine, 200)
+    assert r.json() == mine.json(), "grouped history matches /patients/me/history"
+    r = c.get(f"/patients/{pid}/history", headers=D1)
+    ok(r, 200, "granted doctor grouped history")
+    assert r.json() == mine.json(), "doctor sees the same grouped history as the patient"
+
     # ===== EHR summary (Summary List for History layout, doctor read view) =====
     r = c.get(f"/doctors/patients/{pid}/ehr-summary", headers=D2)
     ok(r, 403, "ehr summary blocked without grant")
@@ -279,11 +289,11 @@ with TestClient(app) as c:
     assert [a["name"] for a in s["anamnesis_vitae"]["allergies"]] == ["Penicillin"]
     assert [a["name"] for a in s["anamnesis_vitae"]["past_diseases"]] == ["Pneumonia"]
     assert len(s["anamnesis_vitae"]["blood_transfusions"]) == 1
-    assert s["accessible_categories"] == ["cardiology"], s["accessible_categories"]
+    assert set(s["accessible_categories"]) == {"cardiology", "neurology"}, s["accessible_categories"]
     full = next(e for e in s["episodes"] if e["id"] == eid)
     assert full["bed_days"] == 3 and len(full["activities"]) == 3
     r = c.get(f"/doctors/patients/{pid}/history/neurology", headers=D1)
-    ok(r, 403, "other category still blocked")
+    ok(r, 200, "any active grant opens the full record")
     r = c.get(f"/patients/{pid}/observations?category=cardiology", headers=D1)
     ok(r, 200, "doctor sees timestamped chat vitals")
     assert any(o["metric"] == "pulse" and o["value_num"] == 50 for o in r.json())
@@ -295,9 +305,9 @@ with TestClient(app) as c:
     ok(r, 200)
 
     r = c.get(f"/patients/{pid}/timeline", headers=D1)
-    ok(r, 200, "doctor timeline scoped")
+    ok(r, 200, "doctor timeline covers the full record")
     cats = [e["category_code"] for e in r.json() if e["event_type"] == "assessment"]
-    assert cats and set(cats) == {"cardiology"}, cats
+    assert cats and set(cats) == {"cardiology", "neurology"}, cats
     types = {e["event_type"] for e in c.get(f"/patients/{pid}/timeline", headers=P).json()}
     assert types == {"assessment", "observation", "document", "profile_item"}, types
 
@@ -345,7 +355,7 @@ with TestClient(app) as c:
     assert [a["name"] for a in s["chronic_conditions"]] == ["Hypertension"]
     assert len(s["latest_vitals"]) >= 5
     cats = {a["category"]["code"] for a in s["recent_assessments"]}
-    assert cats == {"cardiology"}, f"doctor summary must be grant-scoped: {cats}"
+    assert cats == {"cardiology", "neurology"}, f"an active grant opens the full record: {cats}"
 
     # ===== dashboards =====
     r = c.get("/dashboard/patient", headers=P)
@@ -371,6 +381,8 @@ with TestClient(app) as c:
     ok(r, 403, "revoked: history blocked")
     r = c.get(f"/patients/{pid}/observations", headers=D1)
     ok(r, 403, "revoked: observations blocked")
+    r = c.get(f"/patients/{pid}/history", headers=D1)
+    ok(r, 403, "revoked: grouped history blocked")
 
     r = c.delete(f"/profile/items/{item_id}", headers=P)
     ok(r, 204)

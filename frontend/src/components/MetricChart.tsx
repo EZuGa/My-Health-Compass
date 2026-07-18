@@ -178,96 +178,104 @@ export function MetricChart({
           </div>
         </div>
       </div>
-      <div className="flex-1 min-h-[180px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="#0003" strokeDasharray="2 4" />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#000", fontWeight: 700 }} />
-            <YAxis
-              domain={yDomain}
-              tick={{ fontSize: 11, fill: "#000", fontWeight: 700 }}
-              width={42}
-            />
-            {/* Normal range — soft shaded band */}
-            {metric.range && (
-              <ReferenceArea
-                y1={metric.range[0]}
-                y2={metric.range[1]}
-                fill="#2ec4b6"
-                fillOpacity={0.14}
-                stroke="#2ec4b6"
-                strokeOpacity={0.35}
-                strokeDasharray="3 3"
-                ifOverflow="extendDomain"
+      {/* relative + absolutely-positioned chart: the SVG must NOT contribute
+          to the card's intrinsic height. The grid row height (auto-rows-fr in
+          a min-h flex column) derives from content max-content, while recharts'
+          ResponsiveContainer re-measures whenever the row changes — an in-flow
+          chart feeds its own rendered height back into the row and the SVG
+          keeps growing forever. */}
+      <div className="relative flex-1 min-h-[180px]">
+        <div className="absolute inset-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="#0003" strokeDasharray="2 4" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#000", fontWeight: 700 }} />
+              <YAxis
+                domain={yDomain}
+                tick={{ fontSize: 11, fill: "#000", fontWeight: 700 }}
+                width={42}
               />
-            )}
-            <Tooltip
-              cursor={{ stroke: "#000", strokeOpacity: 0.4, strokeDasharray: "3 3" }}
-              content={({ active, payload, label }) => {
-                if (!active || !payload?.length) return null;
-                const dateKey = String(label);
-                const ints = interventionsByDate.get(dateKey) ?? [];
-                return (
-                  <div
-                    style={{
-                      background: "var(--popover)",
-                      border: "1px solid #000",
-                      borderRadius: 6,
-                      fontFamily: "serif",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "#000",
-                      padding: "6px 8px",
-                      maxWidth: 240,
-                    }}
-                  >
-                    <div className="font-extrabold">{dateKey}</div>
-                    <div>
-                      {metric.name}: {payload[0].value} {metric.unit}
-                    </div>
-                    {ints.length > 0 && (
-                      <div className="mt-1 pt-1 border-t border-black/40">
-                        <div className="text-[11px] uppercase tracking-wide opacity-70">
-                          Interventions
-                        </div>
-                        <ul className="mt-0.5 space-y-0.5">
-                          {ints.map((i) => (
-                            <li key={i.date + i.label} className="text-[11px]">
-                              <span className="font-extrabold">{i.date}</span> · {i.label}{" "}
-                              <span className="opacity-70">({i.kind})</span>
-                            </li>
-                          ))}
-                        </ul>
+              {/* Normal range — soft shaded band */}
+              {metric.range && (
+                <ReferenceArea
+                  y1={metric.range[0]}
+                  y2={metric.range[1]}
+                  fill="#2ec4b6"
+                  fillOpacity={0.14}
+                  stroke="#2ec4b6"
+                  strokeOpacity={0.35}
+                  strokeDasharray="3 3"
+                  ifOverflow="extendDomain"
+                />
+              )}
+              <Tooltip
+                cursor={{ stroke: "#000", strokeOpacity: 0.4, strokeDasharray: "3 3" }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const dateKey = String(label);
+                  const ints = interventionsByDate.get(dateKey) ?? [];
+                  return (
+                    <div
+                      style={{
+                        background: "var(--popover)",
+                        border: "1px solid #000",
+                        borderRadius: 6,
+                        fontFamily: "serif",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#000",
+                        padding: "6px 8px",
+                        maxWidth: 240,
+                      }}
+                    >
+                      <div className="font-extrabold">{dateKey}</div>
+                      <div>
+                        {metric.name}: {payload[0].value} {metric.unit}
                       </div>
-                    )}
-                  </div>
-                );
-              }}
-            />
-            {hovered &&
-              relevant.map((i) => {
-                const matchedDate = data.find((d) => `2026-${d.date}` >= i.date)?.date;
-                if (!matchedDate) return null;
-                return (
-                  <ReferenceLine
-                    key={i.date + i.label}
-                    x={matchedDate}
-                    stroke="#000"
-                    strokeOpacity={0.55}
-                    strokeDasharray="3 3"
-                  />
-                );
-              })}
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#000"
-              strokeWidth={2.5}
-              dot={{ r: 2.5, fill: "#000" }}
-              activeDot={{ r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+                      {ints.length > 0 && (
+                        <div className="mt-1 pt-1 border-t border-black/40">
+                          <div className="text-[11px] uppercase tracking-wide opacity-70">
+                            Interventions
+                          </div>
+                          <ul className="mt-0.5 space-y-0.5">
+                            {ints.map((i) => (
+                              <li key={i.date + i.label} className="text-[11px]">
+                                <span className="font-extrabold">{i.date}</span> · {i.label}{" "}
+                                <span className="opacity-70">({i.kind})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              />
+              {hovered &&
+                relevant.map((i) => {
+                  const matchedDate = data.find((d) => `2026-${d.date}` >= i.date)?.date;
+                  if (!matchedDate) return null;
+                  return (
+                    <ReferenceLine
+                      key={i.date + i.label}
+                      x={matchedDate}
+                      stroke="#000"
+                      strokeOpacity={0.55}
+                      strokeDasharray="3 3"
+                    />
+                  );
+                })}
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#000"
+                strokeWidth={2.5}
+                dot={{ r: 2.5, fill: "#000" }}
+                activeDot={{ r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
       {metric.range && (
         <div className="mt-1 text-[11px] font-bold opacity-80">
@@ -284,30 +292,35 @@ export function MetricChart({
           ))}
         </ul>
       )}
-      <details className="mt-3 text-[12px]">
+      {/* The table opens as an overlay dropdown, NOT in flow: if it grew the
+          card, the auto-rows-fr grid row would grow with it and every chart
+          in the row would change height. */}
+      <details className="relative mt-3 text-[12px]">
         <summary className="cursor-pointer font-bold">Numeric values by date</summary>
-        <table className="mt-2 w-full text-left">
-          <thead>
-            <tr className="border-b border-foreground/50">
-              <th className="py-1 font-extrabold">Date</th>
-              <th className="font-extrabold">Value ({metric.unit})</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...effectiveSeries].sort((a, b) => b.date.localeCompare(a.date)).map((p) => {
-              const out =
-                metric.range && (p.value < metric.range[0] || p.value > metric.range[1]);
-              return (
-                <tr key={p.date} className="border-b border-foreground/15">
-                  <td className="py-1 font-semibold">{p.date}</td>
-                  <td className={`font-semibold ${out ? "text-[#a00] font-extrabold" : ""}`}>
-                    {p.value}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="cloud-panel absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto p-3">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-foreground/50">
+                <th className="py-1 font-extrabold">Date</th>
+                <th className="font-extrabold">Value ({metric.unit})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...effectiveSeries].sort((a, b) => b.date.localeCompare(a.date)).map((p) => {
+                const out =
+                  metric.range && (p.value < metric.range[0] || p.value > metric.range[1]);
+                return (
+                  <tr key={p.date} className="border-b border-foreground/15">
+                    <td className="py-1 font-semibold">{p.date}</td>
+                    <td className={`font-semibold ${out ? "text-[#a00] font-extrabold" : ""}`}>
+                      {p.value}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </details>
     </div>
   );

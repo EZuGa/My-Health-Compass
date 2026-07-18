@@ -10,6 +10,7 @@ import { useAsync, fmtDate } from "@/components/backend/ui";
 import { api, getCachedUser, type ProfileItem } from "@/lib/api";
 import { qk } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
+import { useSelectedPatient } from "@/lib/selectedPatient";
 
 // Anamnesis vitae, served from the backend for the signed-in patient.
 // (Previously a hardcoded "Mrs. Z" template — now real data per user.)
@@ -31,6 +32,8 @@ export function MedicalHistoryDialog() {
   // Nothing here is fetched until the dialog is actually opened — this
   // component is mounted in the sidebar of every page.
   const [open, setOpen] = useState(false);
+  const user = getCachedUser();
+  const selected = useSelectedPatient();
 
   const profile = useAsync(
     qk.profile(patientId),
@@ -38,15 +41,20 @@ export function MedicalHistoryDialog() {
       patientId ? api.getProfile(patientId) : Promise.resolve({} as Record<string, ProfileItem[]>),
     { enabled: open },
   );
-  // /patients/me/history is patient-only; for a doctor viewing a patient's
-  // record it 403s, and an errored query refetches on every mount.
-  const isPatient = getCachedUser()?.role === "patient";
+  // Patients read their own history; doctors read the opened patient's
+  // history through the grant-gated endpoint. Without an opened patient a
+  // doctor has no record to show, so the query stays disabled.
+  const isDoctor = user?.role === "doctor";
+  const historyPatientId = isDoctor ? (selected?.id ?? null) : patientId;
   const history = useAsync(
-    qk.myHistory,
-    () => (patientId ? api.myHistory() : Promise.resolve([])),
-    {
-      enabled: open && isPatient,
-    },
+    isDoctor ? qk.patientHistory(historyPatientId) : qk.myHistory,
+    () =>
+      isDoctor
+        ? api.patientHistory(historyPatientId as number)
+        : patientId
+          ? api.myHistory()
+          : Promise.resolve([]),
+    { enabled: open && historyPatientId != null },
   );
   const vitals = useAsync(
     qk.latestVitals(patientId),
@@ -54,7 +62,6 @@ export function MedicalHistoryDialog() {
     { enabled: open },
   );
 
-  const user = getCachedUser();
   const grouped = profile.data ?? {};
 
   const downloadPdf = () => {

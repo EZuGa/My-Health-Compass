@@ -9,7 +9,7 @@ from ..auth import get_current_user, require_doctor, require_patient
 from ..database import get_db
 from ..models import Assessment, AssessmentImage, Category, CategoryMetric, User
 from ..schemas import AssessmentOut, CategoryHistoryOut, CategoryMetricOut, CategoryOut
-from .helpers import get_category_or_404, has_any_active_grant, to_assessment_out
+from .helpers import get_category_or_404, has_any_active_grant, require_patient_readable, to_assessment_out
 
 router = APIRouter(tags=["history"])
 
@@ -69,6 +69,33 @@ def my_history_for_category(
     """e.g. GET /patients/me/history/cardiology — all cardiology assessments + images."""
     category = get_category_or_404(db, category_code)
     return [to_assessment_out(a) for a in _history_for_category(db, patient.id, category.id)]
+
+
+# ---------- shared: full history grouped by category ----------
+
+@router.get("/patients/{patient_id}/history", response_model=list[CategoryHistoryOut])
+def patient_history(
+    patient_id: int,
+    viewer: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The patient's full history, grouped by category (only categories with
+    records). Patients read their own record; doctors read it while the
+    patient's grant is active — a grant opens the whole record."""
+    patient = require_patient_readable(db, viewer, patient_id)
+    rows = db.scalars(
+        select(Assessment)
+        .where(Assessment.patient_id == patient.id)
+        .order_by(Assessment.visit_date.desc())
+    ).all()
+    by_category: dict[int, CategoryHistoryOut] = {}
+    for a in rows:
+        entry = by_category.setdefault(
+            a.category_id,
+            CategoryHistoryOut(category=CategoryOut.model_validate(a.category), assessments=[]),
+        )
+        entry.assessments.append(to_assessment_out(a))
+    return list(by_category.values())
 
 
 # ---------- doctor: patient history (requires approved access) ----------

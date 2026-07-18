@@ -541,6 +541,10 @@ export const api = {
 
   // ----- history -----
   myHistory: () => apiFetch<CategoryHistory[]>("/patients/me/history"),
+  // Grouped-by-category history of any patient the viewer may read (own
+  // record, or a patient who granted access) → /patients/{id}/history
+  patientHistory: (patientId: number) =>
+    apiFetch<CategoryHistory[]>(`/patients/${patientId}/history`),
   myHistoryForCategory: (code: string) => apiFetch<Assessment[]>(`/patients/me/history/${code}`),
   doctorPatientHistory: (patientId: number, code: string) =>
     apiFetch<Assessment[]>(`/doctors/patients/${patientId}/history/${code}`),
