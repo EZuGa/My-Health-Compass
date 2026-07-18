@@ -57,10 +57,14 @@ export function MetricChart({
     if (v != null) setOverride(Number(v));
   }, [storageKey]);
 
-  const todayPoint = override != null
-    ? [{ date: new Date().toISOString().slice(0, 10), value: override }]
-    : [];
-  const effectiveSeries = [...metric.series, ...todayPoint];
+  // effectiveSeries MUST be referentially stable: a new array on every render
+  // flows into `data`, recharts treats it as a data change and restarts the
+  // line animation on each hover/state update.
+  const effectiveSeries = useMemo(() => {
+    const todayPoint =
+      override != null ? [{ date: new Date().toISOString().slice(0, 10), value: override }] : [];
+    return [...metric.series, ...todayPoint];
+  }, [metric.series, override]);
   const data = useMemo(() => {
     const agg = aggregate(effectiveSeries, bucket);
     // Show short label on axis; full key kept for tooltip via "date" field.
@@ -70,32 +74,46 @@ export function MetricChart({
       value: p.value,
     }));
   }, [effectiveSeries, bucket]);
-  const relevant = interventions.filter((i) =>
-    metric.series.some((p) => p.date >= i.date.slice(0, 10))
+  const relevant = useMemo(
+    () => interventions.filter((i) => metric.series.some((p) => p.date >= i.date.slice(0, 10))),
+    [interventions, metric.series],
   );
 
   // Compute y-domain that always includes the reference range
-  const values = effectiveSeries.map((p) => p.value);
-  const [rMin, rMax] = metric.range ?? [Math.min(...values), Math.max(...values)];
-  const lo = Math.min(rMin, ...values);
-  const hi = Math.max(rMax, ...values);
-  const pad = (hi - lo) * 0.12 || 1;
-  const yDomain: [number, number] = [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
+  const yDomain = useMemo<[number, number]>(() => {
+    const values = effectiveSeries.map((p) => p.value);
+    const [rMin, rMax] = metric.range ?? [Math.min(...values), Math.max(...values)];
+    const lo = Math.min(rMin, ...values);
+    const hi = Math.max(rMax, ...values);
+    const pad = (hi - lo) * 0.12 || 1;
+    return [+(lo - pad).toFixed(2), +(hi + pad).toFixed(2)];
+  }, [effectiveSeries, metric.range]);
 
   const latest = effectiveSeries.at(-1)?.value;
   const outOfRange =
     latest !== undefined && metric.range && (latest < metric.range[0] || latest > metric.range[1]);
   const [hovered, setHovered] = useState(false);
+  // Draw the line with its animation once on mount, then switch animation off
+  // so later re-renders (hover markers, background refetches) can't replay it.
+  // (recharts' default animation duration is 1500 ms.)
+  const [animateLine, setAnimateLine] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimateLine(false), 1600);
+    return () => clearTimeout(t);
+  }, []);
 
   // Map each chart point (MM-DD) to the interventions that occurred on/just before it.
-  const interventionsByDate = new Map<string, Intervention[]>();
-  relevant.forEach((i) => {
-    const matched = data.find((d) => `2026-${d.date}` >= i.date)?.date;
-    if (!matched) return;
-    const arr = interventionsByDate.get(matched) ?? [];
-    arr.push(i);
-    interventionsByDate.set(matched, arr);
-  });
+  const interventionsByDate = useMemo(() => {
+    const map = new Map<string, Intervention[]>();
+    relevant.forEach((i) => {
+      const matched = data.find((d) => `2026-${d.date}` >= i.date)?.date;
+      if (!matched) return;
+      const arr = map.get(matched) ?? [];
+      arr.push(i);
+      map.set(matched, arr);
+    });
+    return map;
+  }, [relevant, data]);
 
   return (
     <div
@@ -272,6 +290,7 @@ export function MetricChart({
                 strokeWidth={2.5}
                 dot={{ r: 2.5, fill: "#000" }}
                 activeDot={{ r: 4 }}
+                isAnimationActive={animateLine}
               />
             </LineChart>
           </ResponsiveContainer>
