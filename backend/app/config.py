@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 480
     upload_dir: str = "uploads"
     access_grant_days: int = 30
+    # Clinic EHR import (/external/ehr)
+    clinic_api_key: str = "dev-clinic-key-change-me"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash"
 
     class Config:
         env_file = ".env"

@@ -989,7 +989,7 @@ const SOURCES: Source[] = [
     status: "Self-report",
     evidence: "Captures HPI, ROS, symptom logs",
     feeds: ["mind", "exposures"],
-    protocol: "Browser MediaRecorder → STT (Lovable AI Gateway)",
+    protocol: "Browser MediaRecorder → STT (Gemini)",
   },
   {
     id: "scan",

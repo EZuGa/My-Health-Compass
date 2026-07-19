@@ -1,9 +1,8 @@
 import { useRef, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Mic, MicOff, Camera, ImagePlus, Upload, Sparkles, Loader2 } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { CameraCapture } from "@/components/CameraCapture";
-import { transcribeVoice } from "@/lib/voice-intake.functions";
+import { api } from "@/lib/api";
 
 // HPI categories — narrative skeleton the agent fills in.
 const CATEGORIES = [
@@ -59,7 +58,6 @@ export function HPISection() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
-  const transcribe = useServerFn(transcribeVoice);
 
   const startListening = () => {
     const SR =
@@ -92,17 +90,6 @@ export function HPISection() {
     setListening(false);
   };
 
-  const blobToBase64 = (blob: Blob): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => {
-        const s = r.result as string;
-        resolve(s.split(",", 2)[1] ?? "");
-      };
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(blob);
-    });
-
   const startRecording = async () => {
     setVoiceError(null);
     try {
@@ -124,8 +111,7 @@ export function HPISection() {
         }
         setTranscribing(true);
         try {
-          const base64 = await blobToBase64(blob);
-          const { text } = await transcribe({ data: { audioBase64: base64, mime } });
+          const { text } = await api.transcribeAudio(blob, mime);
           if (text) {
             setTranscript((prev) => (prev ? prev.trim() + " " + text : text));
           } else {

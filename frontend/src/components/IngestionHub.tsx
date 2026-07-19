@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
-import { ingestData, transcribeAudio, type IngestResult } from "@/lib/ingest.functions";
+import { ingestData, type IngestResult } from "@/lib/ingest.functions";
 import { api } from "@/lib/api";
 import { invalidateObservations } from "@/lib/queries";
 import { usePatientId } from "@/lib/usePatient";
@@ -54,7 +54,6 @@ function fileToDataUrl(f: File): Promise<string> {
 
 export function IngestionHub() {
   const ingest = useServerFn(ingestData);
-  const stt = useServerFn(transcribeAudio);
   const queryClient = useQueryClient();
   const patientId = usePatientId();
 
@@ -107,13 +106,10 @@ export function IngestionHub() {
         }
         try {
           setBusy("Transcribing voice…");
-          const buf = new Uint8Array(await blob.arrayBuffer());
-          let bin = "";
-          for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-          const b64 = btoa(bin);
-          const { text: transcript } = await stt({
-            data: { audioBase64: b64, mime: rec.mimeType },
-          });
+          const { text: transcript } = await api.transcribeAudio(
+            blob,
+            rec.mimeType || "audio/webm",
+          );
           setText((prev) => (prev ? prev + "\n\n" + transcript : transcript));
           setSourceKind("voice");
         } catch (e: any) {

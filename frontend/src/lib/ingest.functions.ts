@@ -217,51 +217,8 @@ export const ingestData = createServerFn({ method: "POST" })
     return { ...parsed, source_kind: data.sourceKind };
   });
 
-// Speech-to-text: turn a recorded audio blob (base64) into a transcript via
-// the Lovable AI STT endpoint. The client then feeds that transcript back
-// into `ingestData` for structured extraction.
-const TranscribeInput = z.object({
-  // base64 (no data URL prefix)
-  audioBase64: z.string().min(20).max(20_000_000),
-  mime: z.string().max(120),
-});
-
-export const transcribeAudio = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => TranscribeInput.parse(input))
-  .handler(async ({ data }): Promise<{ text: string }> => {
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-
-    const bin = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
-    const extMap: Record<string, string> = {
-      "audio/webm": "webm",
-      "audio/mp4": "mp4",
-      "audio/mpeg": "mp3",
-      "audio/wav": "wav",
-      "audio/ogg": "ogg",
-    };
-    const ext = extMap[data.mime.split(";")[0]] ?? "webm";
-    const blob = new Blob([bin], { type: data.mime });
-
-    const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
-    form.append("file", blob, `recording.${ext}`);
-
-    const res = await fetch(
-      "https://ai.gateway.lovable.dev/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}` },
-        body: form,
-      },
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`STT error ${res.status}: ${body}`);
-    }
-    const j = await res.json();
-    return { text: j.text ?? "" };
-  });
+// Speech-to-text moved to the backend (`api.transcribeAudio` → POST
+// /speech/transcribe), which transcribes with Gemini.
 
 // Polish a raw note (typed or transcribed) into one or two grammatically
 // correct, well-punctuated clinical sentences in the patient's voice.

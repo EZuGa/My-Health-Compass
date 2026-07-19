@@ -9,4 +9,6 @@ PyJWT==2.*
 bcrypt==4.*
 python-dotenv==1.*
 anthropic
+google-genai
+defusedxml==0.7.*
 

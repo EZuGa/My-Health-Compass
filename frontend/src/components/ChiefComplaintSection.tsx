@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { polishComplaint, suggestCitations, transcribeAudio, type Citation } from "@/lib/ingest.functions";
+import { polishComplaint, suggestCitations, type Citation } from "@/lib/ingest.functions";
+import { api } from "@/lib/api";
 
 type CCEntry = {
   id: string;
@@ -28,21 +29,7 @@ function saveEntries(rows: CCEntry[]) {
   } catch {}
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const result = String(r.result);
-      const i = result.indexOf(",");
-      resolve(i >= 0 ? result.slice(i + 1) : result);
-    };
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
 export function ChiefComplaintSection() {
-  const transcribe = useServerFn(transcribeAudio);
   const polish = useServerFn(polishComplaint);
   const cite = useServerFn(suggestCitations);
   const [entries, setEntries] = useState<CCEntry[]>([]);
@@ -127,10 +114,10 @@ export function ChiefComplaintSection() {
         }
         setBusy("Transcribing…");
         try {
-          const b64 = await blobToBase64(blob);
-          const { text: transcript } = await transcribe({
-            data: { audioBase64: b64, mime: rec.mimeType },
-          });
+          const { text: transcript } = await api.transcribeAudio(
+            blob,
+            rec.mimeType || "audio/webm",
+          );
           if (transcript.trim()) {
             await addEntry(transcript, "voice");
           } else {

@@ -7,7 +7,8 @@ from .metrics_catalog import METRICS_SEED
 from .models import Category, CategoryMetric
 from .routers import (
     access, assessments, auth, calendar, catalog, dashboard, documents,
-    history, intake, patient_data, summary, timeline, wearables,
+    external_ehr, history, intake, patient_data, speech, summary, timeline,
+    wearables,
 )
 
 DEFAULT_CATEGORIES = [
@@ -87,3 +88,5 @@ app.include_router(summary.router)
 app.include_router(dashboard.router)
 app.include_router(catalog.router)
 app.include_router(calendar.router)
+app.include_router(external_ehr.router)
+app.include_router(speech.router)

@@ -26,6 +26,10 @@ services:
       UPLOAD_DIR: /app/uploads
       # Optional: enables Claude-powered chat intake (/intake/message).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Clinic EHR import (/external/ehr): upload auth + Gemini lab normalization.
+      CLINIC_API_KEY: ${CLINIC_API_KEY:-dev-clinic-key-change-me}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
     volumes:
       - uploads:/app/uploads
     depends_on:
