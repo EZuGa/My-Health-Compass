@@ -38,6 +38,7 @@ export function ChiefComplaintSection() {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [savedInfo, setSavedInfo] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -114,12 +115,15 @@ export function ChiefComplaintSection() {
         }
         setBusy("Transcribing…");
         try {
-          const { text: transcript } = await api.transcribeAudio(
-            blob,
-            rec.mimeType || "audio/webm",
-          );
-          if (transcript.trim()) {
-            await addEntry(transcript, "voice");
+          const res = await api.transcribeAudio(blob, rec.mimeType || "audio/webm");
+          if (res.text.trim()) {
+            const stored = [
+              ...res.observations.map((o) =>
+                `${o.metric.replace(/_/g, " ")}${o.value_num != null ? ` ${o.value_num}` : o.value_text ? ` (${o.value_text})` : ""}`),
+              ...res.profile_items.map((p) => `${p.item_type.replace(/_/g, " ")}: ${p.name}`),
+            ];
+            setSavedInfo(stored.length ? `Saved to your record: ${stored.join(", ")}` : null);
+            await addEntry(res.text, "voice");
           } else {
             setErr("No speech detected.");
           }
@@ -199,6 +203,11 @@ export function ChiefComplaintSection() {
             </span>
           )}
         </div>
+        {savedInfo && (
+          <p className="text-xs font-bold bg-emerald-50 text-emerald-800 px-2 py-1 self-start">
+            {savedInfo}
+          </p>
+        )}
       </section>
 
       <section className="cloud-panel p-5 flex flex-col gap-3">

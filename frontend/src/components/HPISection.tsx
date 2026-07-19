@@ -46,6 +46,26 @@ function organizeNarrative(text: string) {
   return buckets;
 }
 
+type SavedInfo = { label: string; value: string }[];
+
+function savedFromResponse(res: {
+  observations: { metric: string; value_num: number | null; value_text: string | null; unit: string | null }[];
+  profile_items: { item_type: string; name: string }[];
+}): SavedInfo {
+  return [
+    ...res.observations.map((o) => ({
+      label: o.metric.replace(/_/g, " "),
+      value: o.value_num != null ? `${o.value_num}${o.unit ? " " + o.unit : ""}` : (o.value_text ?? ""),
+    })),
+    ...res.profile_items.map((p) => ({
+      label: p.item_type.replace(/_/g, " "),
+      value: p.name,
+    })),
+  ];
+}
+
+const LIVE_CHUNK_MS = 6000;
+
 export function HPISection() {
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
@@ -54,44 +74,97 @@ export function HPISection() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const recogRef = useRef<any>(null);
+  const [saved, setSaved] = useState<SavedInfo>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
+  // live dictation (Gemini, chunked)
+  const liveStreamRef = useRef<MediaStream | null>(null);
+  const liveRecRef = useRef<MediaRecorder | null>(null);
+  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveBaseRef = useRef("");
+  const liveTextRef = useRef("");
 
-  const startListening = () => {
-    const SR =
-      (typeof window !== "undefined" &&
-        ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) ||
-      null;
-    if (!SR) {
-      alert("Voice recognition isn't supported in this browser. Try Chrome or Edge, or type below.");
-      return;
+  // Live dictate: record in short chunks, transcribe each with Gemini while
+  // the mic stays open, then extract + store once from the full dictation.
+  const startListening = async () => {
+    setVoiceError(null);
+    setSaved([]);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      liveStreamRef.current = stream;
+      liveBaseRef.current = transcript.trim();
+      liveTextRef.current = "";
+      setListening(true);
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+
+      const recordChunk = () => {
+        const s = liveStreamRef.current;
+        if (!s) return;
+        const rec = new MediaRecorder(s, { mimeType: mime });
+        const chunks: Blob[] = [];
+        rec.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+        rec.onstop = async () => {
+          const blob = new Blob(chunks, { type: mime });
+          if (blob.size > 2048) {
+            try {
+              // store:false — chunks are partial; we extract once at the end
+              const { text } = await api.transcribeAudio(blob, mime, { store: false });
+              if (text) {
+                liveTextRef.current = (liveTextRef.current + " " + text).trim();
+                setTranscript(
+                  (liveBaseRef.current ? liveBaseRef.current + " " : "") + liveTextRef.current,
+                );
+              }
+            } catch (err: any) {
+              setVoiceError(err?.message ?? "Transcription failed.");
+            }
+          }
+          if (liveStreamRef.current) {
+            recordChunk(); // mic still open — keep going
+          } else {
+            await finishLiveDictation();
+          }
+        };
+        liveRecRef.current = rec;
+        rec.start();
+        liveTimerRef.current = setTimeout(() => {
+          if (rec.state !== "inactive") rec.stop();
+        }, LIVE_CHUNK_MS);
+      };
+      recordChunk();
+    } catch (err: any) {
+      setVoiceError(err?.message ?? "Microphone access was denied.");
+      setListening(false);
     }
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = "en-US";
-    rec.onresult = (e: any) => {
-      let final = "";
-      for (let i = 0; i < e.results.length; i++) {
-        final += e.results[i][0].transcript + " ";
-      }
-      setTranscript(final.trim());
-    };
-    rec.onend = () => setListening(false);
-    rec.start();
-    recogRef.current = rec;
-    setListening(true);
   };
 
   const stopListening = () => {
-    recogRef.current?.stop();
+    const stream = liveStreamRef.current;
+    liveStreamRef.current = null; // signals the recorder loop to finish
+    if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
+    const rec = liveRecRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    stream?.getTracks().forEach((t) => t.stop());
+  };
+
+  const finishLiveDictation = async () => {
     setListening(false);
+    const dictated = liveTextRef.current.trim();
+    if (!dictated) return;
+    try {
+      const res = await api.extractHealth(dictated);
+      setSaved(savedFromResponse(res));
+    } catch {
+      // extraction is best-effort; the dictated text is already in the box
+    }
   };
 
   const startRecording = async () => {
     setVoiceError(null);
+    setSaved([]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
@@ -111,9 +184,10 @@ export function HPISection() {
         }
         setTranscribing(true);
         try {
-          const { text } = await api.transcribeAudio(blob, mime);
-          if (text) {
-            setTranscript((prev) => (prev ? prev.trim() + " " + text : text));
+          const res = await api.transcribeAudio(blob, mime);
+          if (res.text) {
+            setTranscript((prev) => (prev ? prev.trim() + " " + res.text : res.text));
+            setSaved(savedFromResponse(res));
           } else {
             setVoiceError("No speech was detected.");
           }
@@ -169,7 +243,7 @@ export function HPISection() {
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="font-serif text-xl">Patient voice</h2>
           <div className="flex flex-wrap gap-2">
-            {/* AI voice intake — Lovable AI transcription (Whisper) */}
+            {/* AI voice intake — Gemini transcription + health-data extraction */}
             {recording ? (
               <button
                 onClick={stopRecording}
@@ -221,6 +295,22 @@ export function HPISection() {
         )}
         {voiceError && (
           <div className="mt-2 text-xs font-bold text-destructive">{voiceError}</div>
+        )}
+        {saved.length > 0 && (
+          <div className="mt-2 text-xs">
+            <span className="font-bold">Saved to your record:</span>{" "}
+            <span className="inline-flex flex-wrap gap-1.5 align-middle">
+              {saved.map((s, i) => (
+                <span
+                  key={i}
+                  className="inline-block border border-foreground/40 bg-background rounded-sm px-1.5 py-0.5"
+                >
+                  {s.label}
+                  {s.value ? `: ${s.value}` : ""}
+                </span>
+              ))}
+            </span>
+          </div>
         )}
       </div>
 

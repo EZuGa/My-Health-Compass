@@ -7,15 +7,16 @@ patient's record. The audio itself is never stored.
 
 Extraction/storage runs only for patients (into their own record); doctors get
 the transcript alone. Pass `store=false` to skip storage (used by flows that
-run their own extraction on the transcript)."""
+run their own extraction, and by live-dictation chunks that are extracted once
+at the end via /speech/extract)."""
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..auth import get_current_user, require_patient
 from ..database import get_db
 from ..gemini import extract_health_data, transcribe_audio
 from ..models import CategoryMetric, Observation, ProfileItem, User
@@ -32,6 +33,69 @@ class VoiceIntakeOut(BaseModel):
     text: str
     observations: list[ObservationOut] = []
     profile_items: list[ProfileItemOut] = []
+
+
+def _extract_and_store(
+    db: Session, patient: User, text: str
+) -> tuple[list[Observation], list[ProfileItem]]:
+    """Gemini-extract health data from `text` and store it in the patient's record."""
+    metrics = db.scalars(select(CategoryMetric)).all()
+    by_code = {m.code: m for m in metrics}
+    extraction = extract_health_data(text, [(m.code, m.name, m.unit) for m in metrics])
+
+    stored_obs: list[Observation] = []
+    stored_items: list[ProfileItem] = []
+    for e in extraction.observations:
+        if e.value_num is None and not e.value_text:
+            continue
+        known = by_code.get(e.metric)
+        obs = Observation(
+            patient_id=patient.id,
+            recorded_by=patient.id,
+            category_id=known.category_id if known else None,
+            box=(known.box if known and known.box else "general"),
+            metric=e.metric,
+            value_num=e.value_num,
+            value_text=e.value_text,
+            unit=e.unit or (known.unit if known else None),
+            source_kind="voice",
+            source_label="Voice note (Gemini)",
+            note=text,
+        )
+        db.add(obs)
+        stored_obs.append(obs)
+
+    for p in extraction.profile_items:
+        exists = db.scalar(
+            select(ProfileItem).where(
+                ProfileItem.patient_id == patient.id,
+                ProfileItem.item_type == p.item_type,
+                func.lower(ProfileItem.name) == p.name.lower(),
+            )
+        )
+        if exists:  # saying "I'm allergic to penicillin" twice isn't two allergies
+            continue
+        item = ProfileItem(
+            patient_id=patient.id,
+            item_type=p.item_type,
+            name=p.name,
+            detail=p.detail,
+        )
+        db.add(item)
+        stored_items.append(item)
+
+    db.commit()
+    for row in (*stored_obs, *stored_items):
+        db.refresh(row)
+    return stored_obs, stored_items
+
+
+def _to_out(text: str, obs: list[Observation], items: list[ProfileItem]) -> VoiceIntakeOut:
+    return VoiceIntakeOut(
+        text=text,
+        observations=[ObservationOut.model_validate(o) for o in obs],
+        profile_items=[ProfileItemOut.model_validate(i) for i in items],
+    )
 
 
 @router.post("/transcribe", response_model=VoiceIntakeOut)
@@ -60,61 +124,33 @@ async def transcribe(
     stored_items: list[ProfileItem] = []
     if store and text and user.role == "patient":
         try:
-            metrics = db.scalars(select(CategoryMetric)).all()
-            by_code = {m.code: m for m in metrics}
-            extraction = extract_health_data(text, [(m.code, m.name, m.unit) for m in metrics])
+            stored_obs, stored_items = _extract_and_store(db, user, text)
         except Exception:
             # The transcript is still useful on its own — never fail the call
             # because extraction did.
             logger.exception("Gemini health extraction failed; returning transcript only")
-            extraction = None
 
-        if extraction:
-            for e in extraction.observations:
-                if e.value_num is None and not e.value_text:
-                    continue
-                known = by_code.get(e.metric)
-                obs = Observation(
-                    patient_id=user.id,
-                    recorded_by=user.id,
-                    category_id=known.category_id if known else None,
-                    box=(known.box if known and known.box else "general"),
-                    metric=e.metric,
-                    value_num=e.value_num,
-                    value_text=e.value_text,
-                    unit=e.unit or (known.unit if known else None),
-                    source_kind="voice",
-                    source_label="Voice note (Gemini)",
-                    note=text,
-                )
-                db.add(obs)
-                stored_obs.append(obs)
+    return _to_out(text, stored_obs, stored_items)
 
-            for p in extraction.profile_items:
-                exists = db.scalar(
-                    select(ProfileItem).where(
-                        ProfileItem.patient_id == user.id,
-                        ProfileItem.item_type == p.item_type,
-                        func.lower(ProfileItem.name) == p.name.lower(),
-                    )
-                )
-                if exists:  # saying "I'm allergic to penicillin" twice isn't two allergies
-                    continue
-                item = ProfileItem(
-                    patient_id=user.id,
-                    item_type=p.item_type,
-                    name=p.name,
-                    detail=p.detail,
-                )
-                db.add(item)
-                stored_items.append(item)
 
-            db.commit()
-            for row in (*stored_obs, *stored_items):
-                db.refresh(row)
+class ExtractIn(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
 
-    return VoiceIntakeOut(
-        text=text,
-        observations=[ObservationOut.model_validate(o) for o in stored_obs],
-        profile_items=[ProfileItemOut.model_validate(i) for i in stored_items],
-    )
+
+@router.post("/extract", response_model=VoiceIntakeOut)
+def extract(
+    data: ExtractIn,
+    patient: User = Depends(require_patient),
+    db: Session = Depends(get_db),
+):
+    """Extract + store health data from an already-transcribed text (the live
+    dictation flow transcribes chunk by chunk, then extracts once from here)."""
+    try:
+        stored_obs, stored_items = _extract_and_store(db, patient, data.text)
+    except Exception as e:
+        logger.exception("Gemini health extraction failed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"Extraction service unavailable: {e.__class__.__name__}",
+        )
+    return _to_out(data.text, stored_obs, stored_items)
