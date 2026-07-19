@@ -2,14 +2,19 @@
 and we create the episode in the patient's record — header, visits, lab tests
 (original text + Gemini-normalized JSON + chartable observations),
 consultations, discharge recommendations, and the raw XML as a document.
+A Gemini catch-all pass then extracts every section the fixed-path parser
+does not map (prescriptions, examinations, operations, secondary diagnoses,
+header extras) into activities / diagnoses / empty assessment fields.
 
 Authenticated with a shared clinic API key (X-API-Key header), not a user JWT:
 the caller is an institution, not an account in our system.
 """
 import hashlib
 import hmac
+import logging
 import secrets
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
@@ -21,12 +26,14 @@ from ..auth import hash_password
 from ..config import settings
 from ..database import get_db
 from ..ehr_xml import ClinicEhr, EhrXmlError, parse_clinic_ehr
-from ..gemini import normalize_lab_result
+from ..gemini import extract_ehr_extras, normalize_with_gemini
 from ..models import (
-    Assessment, AssessmentActivity, AssessmentVisit, CategoryMetric, Observation,
-    PatientDocument, User,
+    Assessment, AssessmentActivity, AssessmentDiagnosis, AssessmentVisit,
+    CategoryMetric, Observation, PatientDocument, User,
 )
 from .helpers import get_category_or_404
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/external", tags=["external EHR"])
 
@@ -84,9 +91,32 @@ def _attribute_doctor(db: Session, ehr: ClinicEhr) -> User:
 class LabImportOut(BaseModel):
     activity_id: int
     test_name: str | None
-    normalized_by: str  # 'gemini' | 'rules'
+    normalized_by: str  # 'gemini' | 'empty' (no result text in the document)
     values_extracted: int
     observations_created: int
+
+
+def _gemini_required(e: Exception) -> HTTPException:
+    """Clinic documents vary too much for a rule-based fallback, so Gemini
+    failures abort the import (nothing is committed) and the clinic retries."""
+    logger.exception("Gemini EHR processing failed; import aborted")
+    if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+        return HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AI processing quota exceeded — nothing was imported; retry the upload in a minute.",
+        )
+    return HTTPException(
+        status.HTTP_502_BAD_GATEWAY,
+        f"AI processing unavailable ({e.__class__.__name__}) — nothing was imported; retry later.",
+    )
+
+
+class ExtrasImportOut(BaseModel):
+    """Result of the Gemini catch-all pass over the whole document (sections
+    the fixed-path XML parser does not map)."""
+    activities: int = 0
+    diagnoses: int = 0
+    header_fields: int = 0
 
 
 class EhrImportOut(BaseModel):
@@ -98,6 +128,16 @@ class EhrImportOut(BaseModel):
     lab_tests: list[LabImportOut]
     consultations_imported: int
     recommendations_imported: int
+    extras: ExtrasImportOut
+
+
+def _gemini_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 @router.post("/ehr", response_model=EhrImportOut, status_code=status.HTTP_201_CREATED,
@@ -171,10 +211,13 @@ async def import_clinic_ehr(
 
     lab_results: list[LabImportOut] = []
     for lab in ehr.lab_tests:
-        normalized, parser = (
-            normalize_lab_result(lab.result_text, lab.name, catalog)
-            if lab.result_text else (None, "empty")
-        )
+        normalized, parser = None, "empty"
+        if lab.result_text:
+            try:
+                normalized = normalize_with_gemini(lab.result_text, lab.name, catalog)
+            except Exception as e:
+                raise _gemini_required(e)
+            parser = "gemini"
         activity = AssessmentActivity(
             assessment_id=assessment.id,
             activity_type="lab_test",
@@ -240,6 +283,54 @@ async def import_clinic_ehr(
             result_note=rec,
         ))
 
+    # Gemini catch-all over the whole document: prescriptions, examinations,
+    # operations, secondary diagnoses, header extras — everything the
+    # fixed-path parser above does not map.
+    try:
+        extras = extract_ehr_extras(xml_bytes.decode("utf-8", errors="replace"))
+    except Exception as e:
+        raise _gemini_required(e)
+
+    extras_out = ExtrasImportOut()
+    for a in extras.activities:
+        if not (a.name or a.result):
+            continue
+        db.add(AssessmentActivity(
+            assessment_id=assessment.id,
+            activity_type=a.activity_type,
+            name=a.name[:255] if a.name else None,
+            ncsp_code=a.ncsp[:30] if a.ncsp else None,
+            icd10_code=a.icd10[:20] if a.icd10 else None,
+            started_at=_gemini_dt(a.started_at),
+            ended_at=_gemini_dt(a.ended_at),
+            result_note=a.result,
+            details={"extracted_by": "gemini"},
+        ))
+        extras_out.activities += 1
+    for d in extras.diagnoses:
+        if not d.icd10:
+            continue
+        db.add(AssessmentDiagnosis(
+            assessment_id=assessment.id,
+            kind=d.kind,
+            icd10_code=d.icd10[:20],
+            description=d.description,
+            established_at=_gemini_dt(d.established_at),
+        ))
+        extras_out.diagnoses += 1
+    for field_name, max_len in (
+        ("transportation_type", 50),
+        ("preliminary_diagnosis_icd10", 20),
+        ("clinical_diagnosis_icd10", 20),
+        ("treatment_notes", None),
+        ("disease_outcome", 100),
+        ("outcome", None),
+    ):
+        value = getattr(extras.header, field_name)
+        if value and getattr(assessment, field_name) is None:
+            setattr(assessment, field_name, value[:max_len] if max_len else value)
+            extras_out.header_fields += 1
+
     # keep the raw XML on file so nothing the clinic sent is ever lost
     dest_dir = Path(settings.upload_dir) / str(patient.id) / "documents"
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -267,4 +358,5 @@ async def import_clinic_ehr(
         lab_tests=lab_results,
         consultations_imported=len(ehr.consultations),
         recommendations_imported=len(ehr.recommendations),
+        extras=extras_out,
     )

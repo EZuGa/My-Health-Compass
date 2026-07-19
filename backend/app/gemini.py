@@ -1,22 +1,18 @@
 """Normalize free-text lab results from clinic EHR uploads into structured JSON.
 
-Primary path: Google Gemini (google-genai) with a JSON response schema —
-handles Georgian analyte names and maps them onto our metric catalog so the
-values become chartable observations.
-Fallback path: rule-based parser for the "სახელი (ABBR): value; ..." format,
-used when no Gemini credentials are configured or the API call fails.
+Google Gemini (google-genai) with a JSON response schema — handles Georgian
+analyte names and maps them onto our metric catalog so the values become
+chartable observations. Gemini is required: clinic documents vary too much
+for a rule-based parser, so failures surface to the caller instead of
+degrading silently.
 """
 import json
-import logging
 import os
-import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from .config import settings
-
-logger = logging.getLogger("uvicorn.error")
 
 
 _gemini_client = None
@@ -221,50 +217,92 @@ def extract_health_data(
     return VoiceHealthExtraction.model_validate_json(response.text)
 
 
-# ---------- rule-based fallback ----------
+# ---------- clinic EHR: catch-all for sections the XML parser skips ----------
 
-# Catalog codes for common CBC abbreviations, so the fallback still maps
-# the frequent analytes even without Gemini.
-_ABBREV_TO_METRIC = {
-    "HGB": "hemoglobin",
-    "HCT": "hematocrit",
-    "WBC": "wbc",
-    "PLT": "platelets",
-}
-
-_SEGMENT = re.compile(r"^(?P<name>.+?)\s*:\s*(?P<value>[-+]?\d+(?:[.,]\d+)?)\s*$")
-_ABBREV = re.compile(r"\(([A-Za-z][A-Za-z0-9 _-]*)\)")
-
-
-def normalize_with_rules(text: str) -> NormalizedLabReport:
-    values: list[NormalizedLabValue] = []
-    for segment in text.split(";"):
-        m = _SEGMENT.match(segment.strip())
-        if not m:
-            continue
-        name = m.group("name").strip()
-        abbrev_match = _ABBREV.search(name)
-        abbrev = abbrev_match.group(1).strip().upper() if abbrev_match else None
-        metric = _ABBREV_TO_METRIC.get(abbrev or "") or (
-            re.sub(r"[^a-z0-9]+", "_", abbrev.lower()).strip("_") if abbrev else "lab_value"
-        )
-        values.append(NormalizedLabValue(
-            metric=metric,
-            name_original=name,
-            name_en=abbrev or name,
-            abbreviation=abbrev,
-            value_num=float(m.group("value").replace(",", ".")),
-        ))
-    return NormalizedLabReport(values=values)
+class EhrExtraActivity(BaseModel):
+    # lab_test / consultation / *_other_recommendation are absent on purpose:
+    # the deterministic importer owns those sections, so the schema itself
+    # prevents duplicates.
+    activity_type: Literal[
+        "examination_note", "observation", "diagnostic_exam",
+        "accompanying_activity", "prescription", "blood_transfusion",
+        "intensive_care", "anesthesia", "operation_protocol",
+        "surgical_intervention", "histomorphology", "discharge_surgery",
+        "discharge_instrumental_exam", "discharge_lab_test",
+        "discharge_consultation", "discharge_eprescription",
+        "discharge_prescription",
+    ] = Field(description="MoH EHR section this record belongs to (closest match)")
+    name: str | None = Field(default=None, description="Procedure / drug / examination / activity name")
+    ncsp: str | None = Field(default=None, description="NCSP intervention code if stated")
+    icd10: str | None = Field(default=None, description="ICD-10 code if stated")
+    started_at: str | None = Field(default=None, description="Start date/time, ISO 8601")
+    ended_at: str | None = Field(default=None, description="End date/time, ISO 8601")
+    result: str | None = Field(default=None, description="Result / protocol / dosage / comment, verbatim from the document")
 
 
-def normalize_lab_result(
-    text: str, test_name: str | None, catalog: list[tuple[str, str, str | None]]
-) -> tuple[NormalizedLabReport, str]:
-    """Returns (report, parser) where parser is 'gemini' or 'rules'."""
-    try:
-        return normalize_with_gemini(text, test_name, catalog), "gemini"
-    except Exception:
-        # no credentials / no network / quota — degrade to the rule parser
-        logger.exception("Gemini lab normalization failed; using rule-based fallback")
-        return normalize_with_rules(text), "rules"
+class EhrExtraDiagnosis(BaseModel):
+    kind: Literal["preliminary", "clinical", "final_comorbidity", "final_complication"]
+    icd10: str = Field(description="ICD-10 code")
+    description: str | None = Field(default=None, description="Diagnosis text as written")
+    established_at: str | None = Field(default=None, description="Date established, ISO 8601")
+
+
+class EhrHeaderExtras(BaseModel):
+    """Episode-level fields the fixed-path parser does not read; the importer
+    applies them only where the assessment column is still empty."""
+    transportation_type: str | None = Field(default=None, description="How the patient arrived / was transported")
+    preliminary_diagnosis_icd10: str | None = None
+    clinical_diagnosis_icd10: str | None = None
+    treatment_notes: str | None = Field(default=None, description="Treatment / pharmacotherapy summary")
+    disease_outcome: str | None = Field(default=None, description="Disease outcome (e.g. improvement, recovery)")
+    outcome: str | None = Field(default=None, description="Overall episode outcome text")
+
+
+class EhrExtrasExtraction(BaseModel):
+    activities: list[EhrExtraActivity]
+    diagnoses: list[EhrExtraDiagnosis]
+    header: EhrHeaderExtras
+
+
+_EHR_EXTRAS_PROMPT = (
+    "You extract structured data from a Georgian MoH-style clinic EHR XML "
+    "document. A deterministic importer has ALREADY stored these parts — never "
+    "repeat them:\n"
+    "- EHRInfo header, PatientInfo, TypeOfHospitalization, Simptoms\n"
+    "- Discharge/HospitalizationOutcome and FinalDiagnosis/PrimaryDisease\n"
+    "- Hospitalization/Visits\n"
+    "- TreatmentProcess/LabTest and TreatmentProcess/Consultations records\n"
+    "- RecommendationsAfterDischarge/RecommendationOther records\n\n"
+    "Extract EVERYTHING ELSE the document contains:\n"
+    "- Into `activities`: every other treatment-process or post-discharge "
+    "record — prescriptions/medications, examinations, operations, blood "
+    "transfusions, anesthesia, histomorphology, discharge recommendations for "
+    "surgery / instrumental exams / lab tests / consultations / prescriptions, "
+    "and anything similar — choosing the closest activity_type. Keep "
+    "original-language text verbatim in `result`; dates as ISO 8601.\n"
+    "- Into `diagnoses`: preliminary and clinical diagnoses, and final "
+    "comorbidities or complications (NOT the primary final diagnosis).\n"
+    "- Into `header`: the listed episode-level fields when the document states "
+    "them.\n"
+    "Placeholder values like 'არა აქვს' or empty elements mean missing. Never "
+    "invent data; omit whatever the document does not contain."
+)
+
+
+def extract_ehr_extras(xml_text: str) -> EhrExtrasExtraction:
+    from google.genai import types
+
+    response = _client().models.generate_content(
+        model=settings.gemini_model,
+        contents=f"EHR XML document:\n{xml_text}",
+        config=types.GenerateContentConfig(
+            system_instruction=_EHR_EXTRAS_PROMPT,
+            response_mime_type="application/json",
+            response_schema=EhrExtrasExtraction,
+            temperature=0,
+        ),
+    )
+    parsed = response.parsed
+    if isinstance(parsed, EhrExtrasExtraction):
+        return parsed
+    return EhrExtrasExtraction.model_validate_json(response.text)
