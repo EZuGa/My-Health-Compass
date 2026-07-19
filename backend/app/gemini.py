@@ -4,9 +4,11 @@ Primary path: Google Gemini (google-genai) with a JSON response schema —
 handles Georgian analyte names and maps them onto our metric catalog so the
 values become chartable observations.
 Fallback path: rule-based parser for the "სახელი (ABBR): value; ..." format,
-used when no Gemini key is configured or the API call fails.
+used when no Gemini credentials are configured or the API call fails.
 """
+import json
 import logging
+import os
 import re
 from typing import Literal
 
@@ -20,19 +22,63 @@ logger = logging.getLogger("uvicorn.error")
 _gemini_client = None
 
 
+def _adc_file() -> str | None:
+    """Locate the gcloud Application Default Credentials JSON: explicit
+    GOOGLE_APPLICATION_CREDENTIALS first, then gcloud's well-known paths."""
+    candidates = [
+        settings.google_application_credentials,
+        os.path.join(os.path.expanduser("~"), ".config", "gcloud",
+                     "application_default_credentials.json"),
+    ]
+    if os.environ.get("APPDATA"):  # gcloud's location on Windows
+        candidates.append(os.path.join(os.environ["APPDATA"], "gcloud",
+                                       "application_default_credentials.json"))
+    return next((p for p in candidates if p and os.path.isfile(p)), None)
+
+
+def _vertex_project(adc_path: str) -> str | None:
+    """Vertex AI needs an explicit project; when GOOGLE_CLOUD_PROJECT is not
+    set, take it from the ADC file (quota project from `gcloud auth
+    application-default login`, or the service-account key's own project)."""
+    if settings.google_cloud_project:
+        return settings.google_cloud_project
+    try:
+        with open(adc_path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("quota_project_id") or data.get("project_id")
+    except (OSError, ValueError):
+        return None
+
+
 def _client():
-    """Cached Gemini Developer API client. Must stay referenced at module level:
-    the SDK closes its HTTP session when a Client is garbage-collected. The
-    billing tier (free vs paid) follows the Google Cloud project the API key
-    belongs to — use a key from the project that has billing enabled."""
+    """Cached GenAI client. Must stay referenced at module level: the SDK
+    closes its HTTP session when a Client is garbage-collected.
+    Prefers Vertex AI with gcloud Application Default Credentials
+    (`gcloud auth application-default login`); falls back to a Developer API
+    key. Billing follows the Google Cloud project either way."""
     global _gemini_client
     if _gemini_client is None:
         from google import genai
 
-        key = settings.gemini_api_key
-        if not key:
-            raise RuntimeError("GEMINI_API_KEY is not configured")
-        _gemini_client = genai.Client(api_key=key)
+        adc = _adc_file()
+        project = _vertex_project(adc) if adc else None
+        if adc and project:
+            # google-auth also honors this env var; point it at the file we
+            # found so non-well-known paths from settings work too.
+            os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", adc)
+            _gemini_client = genai.Client(
+                vertexai=True,
+                project=project,
+                location=settings.google_cloud_location,
+            )
+        elif settings.gemini_api_key:
+            _gemini_client = genai.Client(api_key=settings.gemini_api_key)
+        else:
+            raise RuntimeError(
+                "No Gemini credentials: provide gcloud ADC (`gcloud auth "
+                "application-default login`, plus GOOGLE_CLOUD_PROJECT if the "
+                "ADC file has no quota project) or set GEMINI_API_KEY"
+            )
     return _gemini_client
 
 
@@ -219,6 +265,6 @@ def normalize_lab_result(
     try:
         return normalize_with_gemini(text, test_name, catalog), "gemini"
     except Exception:
-        # no API key / no network / quota — degrade to the rule parser
+        # no credentials / no network / quota — degrade to the rule parser
         logger.exception("Gemini lab normalization failed; using rule-based fallback")
         return normalize_with_rules(text), "rules"

@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     clinic_api_key: str = "dev-clinic-key-change-me"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash"
+    # Vertex AI via gcloud Application Default Credentials — used instead of
+    # the API key when an ADC file is available.
+    google_application_credentials: str = ""
+    google_cloud_project: str = ""
+    google_cloud_location: str = "global"
 
     class Config:
         env_file = ".env"

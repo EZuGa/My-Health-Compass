@@ -28,10 +28,18 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Clinic EHR import (/external/ehr): upload auth + Gemini lab normalization.
       CLINIC_API_KEY: ${CLINIC_API_KEY:-dev-clinic-key-change-me}
+      # Gemini auth, preferred first: gcloud ADC mounted below (Vertex AI),
+      # else GEMINI_API_KEY (Developer API).
+      GOOGLE_APPLICATION_CREDENTIALS: /gcloud/adc.json
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-global}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
     volumes:
       - uploads:/app/uploads
+      # gcloud Application Default Credentials from the host. Override
+      # GCLOUD_ADC_FILE in .env if yours lives elsewhere.
+      - ${GCLOUD_ADC_FILE:-~/.config/gcloud/application_default_credentials.json}:/gcloud/adc.json:ro
     depends_on:
       db:
         condition: service_healthy
