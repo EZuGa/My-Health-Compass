@@ -8,6 +8,7 @@ used when no Gemini key is configured or the API call fails.
 """
 import logging
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -106,6 +107,69 @@ def transcribe_audio(audio: bytes, mime_type: str, language: str | None = None) 
         config=types.GenerateContentConfig(temperature=0),
     )
     return (response.text or "").strip()
+
+
+class VoiceObservation(BaseModel):
+    metric: str = Field(description="Metric code from the catalog, or a new snake_case code (e.g. 'diarrhea') if none fits")
+    value_num: float | None = Field(default=None, description="Numeric value if one was stated")
+    value_text: str | None = Field(default=None, description="For symptoms without a number: 'present', or the stated severity/description")
+    unit: str | None = Field(default=None, description="Unit of value_num (catalog unit when mapped)")
+
+class VoiceProfileItem(BaseModel):
+    item_type: Literal["allergy", "chronic_condition", "medication", "past_disease"]
+    name: str = Field(description="The allergen / condition / drug name")
+    detail: str | None = Field(default=None, description="Dose, reaction, or other stated detail")
+
+class VoiceHealthExtraction(BaseModel):
+    observations: list[VoiceObservation]
+    profile_items: list[VoiceProfileItem]
+
+
+def _voice_prompt(catalog: list[tuple[str, str, str | None]]) -> str:
+    lines = "\n".join(f"- {code}: {name}" + (f" ({unit})" if unit else "")
+                      for code, name, unit in catalog)
+    return (
+        "You extract structured health data from a transcribed voice note in which "
+        "a patient talks about their own health (any language).\n\n"
+        "Into `observations` put measurements and symptoms:\n"
+        "- Map each measurement to a metric code from this catalog when it is the "
+        "same quantity, converting to the catalog unit:\n"
+        f"{lines}\n"
+        "- A symptom with no number (e.g. 'today I had diarrhea', 'my head hurts') "
+        "becomes a clear snake_case metric (diarrhea, headache, ...) with "
+        "value_text 'present' or the stated severity.\n\n"
+        "Into `profile_items` put durable facts: allergies, chronic conditions, "
+        "medications the patient takes, past diseases.\n\n"
+        "Only extract what the patient explicitly states about themselves — never "
+        "infer, never diagnose. If the note contains no health information, return "
+        "empty lists."
+    )
+
+
+def extract_health_data(
+    transcript: str, catalog: list[tuple[str, str, str | None]]
+) -> VoiceHealthExtraction:
+    from google import genai
+    from google.genai import types
+
+    key = settings.gemini_api_key
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    client = genai.Client(api_key=key, vertexai=key.startswith("AQ."))
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=f"Voice note transcript:\n{transcript}",
+        config=types.GenerateContentConfig(
+            system_instruction=_voice_prompt(catalog),
+            response_mime_type="application/json",
+            response_schema=VoiceHealthExtraction,
+            temperature=0,
+        ),
+    )
+    parsed = response.parsed
+    if isinstance(parsed, VoiceHealthExtraction):
+        return parsed
+    return VoiceHealthExtraction.model_validate_json(response.text)
 
 
 # ---------- rule-based fallback ----------

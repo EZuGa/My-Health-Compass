@@ -521,16 +521,29 @@ export const api = {
       body: { message, observed_at: observedAt ?? null },
     }),
 
-  // ----- speech to text (Gemini on the backend) -----
-  transcribeAudio: (audio: Blob, mime: string, language?: string) => {
+  // ----- speech to text + voice intake (Gemini on the backend) -----
+  // Transcribes the recording; for patients it also extracts stated health
+  // data (symptoms, measurements, allergies, medications, …) and stores it
+  // in their record. Pass { store: false } when the caller runs its own
+  // extraction on the transcript.
+  transcribeAudio: (
+    audio: Blob,
+    mime: string,
+    opts?: { store?: boolean; language?: string },
+  ) => {
     const base = mime.split(";")[0];
     const ext =
       { "audio/webm": "webm", "audio/mp4": "mp4", "audio/mpeg": "mp3",
         "audio/wav": "wav", "audio/ogg": "ogg" }[base] ?? "webm";
     const form = new FormData();
     form.append("file", audio, `voice.${ext}`);
-    if (language) form.append("language", language);
-    return apiFetch<{ text: string }>("/speech/transcribe", {
+    if (opts?.language) form.append("language", opts.language);
+    if (opts?.store === false) form.append("store", "false");
+    return apiFetch<{
+      text: string;
+      observations: Observation[];
+      profile_items: ProfileItem[];
+    }>("/speech/transcribe", {
       method: "POST",
       form,
     });

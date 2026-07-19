@@ -106,9 +106,12 @@ export function IngestionHub() {
         }
         try {
           setBusy("Transcribing voice…");
+          // store:false — the Ingestion Hub extracts and saves observations
+          // itself on submit; auto-store here would duplicate them.
           const { text: transcript } = await api.transcribeAudio(
             blob,
             rec.mimeType || "audio/webm",
+            { store: false },
           );
           setText((prev) => (prev ? prev + "\n\n" + transcript : transcript));
           setSourceKind("voice");
