@@ -17,6 +17,25 @@ from .config import settings
 logger = logging.getLogger("uvicorn.error")
 
 
+_gemini_client = None
+
+
+def _client():
+    """Cached Gemini Developer API client. Must stay referenced at module level:
+    the SDK closes its HTTP session when a Client is garbage-collected. The
+    billing tier (free vs paid) follows the Google Cloud project the API key
+    belongs to — use a key from the project that has billing enabled."""
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+
+        key = settings.gemini_api_key
+        if not key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
+        _gemini_client = genai.Client(api_key=key)
+    return _gemini_client
+
+
 class NormalizedLabValue(BaseModel):
     metric: str = Field(description="Metric code from the catalog, or a new snake_case English code if none fits")
     name_original: str = Field(description="Analyte name exactly as written in the source text")
@@ -57,15 +76,9 @@ def _catalog_prompt(catalog: list[tuple[str, str, str | None]]) -> str:
 def normalize_with_gemini(
     text: str, test_name: str | None, catalog: list[tuple[str, str, str | None]]
 ) -> NormalizedLabReport:
-    from google import genai
     from google.genai import types
 
-    key = settings.gemini_api_key
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
-    # "AQ."-prefixed keys are Vertex AI express-mode keys; others are AI Studio keys.
-    client = genai.Client(api_key=key, vertexai=key.startswith("AQ."))
-    response = client.models.generate_content(
+    response = _client().models.generate_content(
         model=settings.gemini_model,
         contents=(f"Lab test: {test_name}\n\n" if test_name else "") + f"Result text:\n{text}",
         config=types.GenerateContentConfig(
@@ -84,13 +97,8 @@ def normalize_with_gemini(
 def transcribe_audio(audio: bytes, mime_type: str, language: str | None = None) -> str:
     """Speech-to-text for the voice-intake features: the browser records with
     MediaRecorder (webm/mp4) and we ask Gemini for a verbatim transcript."""
-    from google import genai
     from google.genai import types
 
-    key = settings.gemini_api_key
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
-    client = genai.Client(api_key=key, vertexai=key.startswith("AQ."))
     instruction = (
         "Transcribe this audio recording verbatim, in the language spoken"
         + (f" (likely {language})" if language else "")
@@ -98,7 +106,7 @@ def transcribe_audio(audio: bytes, mime_type: str, language: str | None = None) 
         "commentary, no labels. If there is no intelligible speech, return "
         "an empty string."
     )
-    response = client.models.generate_content(
+    response = _client().models.generate_content(
         model=settings.gemini_model,
         contents=[
             types.Part.from_bytes(data=audio, mime_type=mime_type.split(";")[0]),
@@ -149,14 +157,9 @@ def _voice_prompt(catalog: list[tuple[str, str, str | None]]) -> str:
 def extract_health_data(
     transcript: str, catalog: list[tuple[str, str, str | None]]
 ) -> VoiceHealthExtraction:
-    from google import genai
     from google.genai import types
 
-    key = settings.gemini_api_key
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
-    client = genai.Client(api_key=key, vertexai=key.startswith("AQ."))
-    response = client.models.generate_content(
+    response = _client().models.generate_content(
         model=settings.gemini_model,
         contents=f"Voice note transcript:\n{transcript}",
         config=types.GenerateContentConfig(
