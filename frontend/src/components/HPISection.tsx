@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Mic, MicOff, Camera, ImagePlus, Upload, Sparkles, Loader2 } from "lucide-react";
+import { MicOff, Camera, ImagePlus, Upload, Sparkles, Loader2 } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { CameraCapture } from "@/components/CameraCapture";
 import { api } from "@/lib/api";
@@ -64,11 +64,8 @@ function savedFromResponse(res: {
   ];
 }
 
-const LIVE_CHUNK_MS = 6000;
-
 export function HPISection() {
   const [transcript, setTranscript] = useState("");
-  const [listening, setListening] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -78,89 +75,6 @@ export function HPISection() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
-  // live dictation (Gemini, chunked)
-  const liveStreamRef = useRef<MediaStream | null>(null);
-  const liveRecRef = useRef<MediaRecorder | null>(null);
-  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveBaseRef = useRef("");
-  const liveTextRef = useRef("");
-
-  // Live dictate: record in short chunks, transcribe each with Gemini while
-  // the mic stays open, then extract + store once from the full dictation.
-  const startListening = async () => {
-    setVoiceError(null);
-    setSaved([]);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      liveStreamRef.current = stream;
-      liveBaseRef.current = transcript.trim();
-      liveTextRef.current = "";
-      setListening(true);
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-
-      const recordChunk = () => {
-        const s = liveStreamRef.current;
-        if (!s) return;
-        const rec = new MediaRecorder(s, { mimeType: mime });
-        const chunks: Blob[] = [];
-        rec.ondataavailable = (e) => {
-          if (e.data.size > 0) chunks.push(e.data);
-        };
-        rec.onstop = async () => {
-          const blob = new Blob(chunks, { type: mime });
-          if (blob.size > 2048) {
-            try {
-              // store:false — chunks are partial; we extract once at the end
-              const { text } = await api.transcribeAudio(blob, mime, { store: false });
-              if (text) {
-                liveTextRef.current = (liveTextRef.current + " " + text).trim();
-                setTranscript(
-                  (liveBaseRef.current ? liveBaseRef.current + " " : "") + liveTextRef.current,
-                );
-              }
-            } catch (err: any) {
-              setVoiceError(err?.message ?? "Transcription failed.");
-            }
-          }
-          if (liveStreamRef.current) {
-            recordChunk(); // mic still open — keep going
-          } else {
-            await finishLiveDictation();
-          }
-        };
-        liveRecRef.current = rec;
-        rec.start();
-        liveTimerRef.current = setTimeout(() => {
-          if (rec.state !== "inactive") rec.stop();
-        }, LIVE_CHUNK_MS);
-      };
-      recordChunk();
-    } catch (err: any) {
-      setVoiceError(err?.message ?? "Microphone access was denied.");
-      setListening(false);
-    }
-  };
-
-  const stopListening = () => {
-    const stream = liveStreamRef.current;
-    liveStreamRef.current = null; // signals the recorder loop to finish
-    if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
-    const rec = liveRecRef.current;
-    if (rec && rec.state !== "inactive") rec.stop();
-    stream?.getTracks().forEach((t) => t.stop());
-  };
-
-  const finishLiveDictation = async () => {
-    setListening(false);
-    const dictated = liveTextRef.current.trim();
-    if (!dictated) return;
-    try {
-      const res = await api.extractHealth(dictated);
-      setSaved(savedFromResponse(res));
-    } catch {
-      // extraction is best-effort; the dictated text is already in the box
-    }
-  };
 
   const startRecording = async () => {
     setVoiceError(null);
@@ -263,21 +177,6 @@ export function HPISection() {
                 {transcribing ? "Transcribing…" : "AI voice intake"}
               </button>
             )}
-            {listening ? (
-              <button
-                onClick={stopListening}
-                className="inline-flex items-center gap-1.5 border border-foreground bg-destructive text-destructive-foreground px-3 py-1.5 rounded-sm text-sm"
-              >
-                <MicOff className="h-4 w-4" /> Stop
-              </button>
-            ) : (
-              <button
-                onClick={startListening}
-                className="inline-flex items-center gap-1.5 border border-foreground bg-mint-deep px-3 py-1.5 rounded-sm text-sm"
-              >
-                <Mic className="h-4 w-4" /> Live dictate
-              </button>
-            )}
           </div>
         </div>
         <textarea
@@ -287,10 +186,10 @@ export function HPISection() {
           placeholder="Tell the story of what brought you in today — when it began, what it feels like, what makes it better or worse, what you've tried…"
           className="w-full border border-foreground/50 bg-background p-3 rounded-sm font-serif text-base resize-y"
         />
-        {(listening || recording) && (
+        {recording && (
           <div className="mt-2 text-xs flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-destructive dali-pulse" />
-            {recording ? "Recording — press Stop to transcribe with AI." : "Listening…"}
+            Recording — press Stop to transcribe with AI.
           </div>
         )}
         {voiceError && (

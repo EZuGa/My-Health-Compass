@@ -7,16 +7,15 @@ patient's record. The audio itself is never stored.
 
 Extraction/storage runs only for patients (into their own record); doctors get
 the transcript alone. Pass `store=false` to skip storage (used by flows that
-run their own extraction, and by live-dictation chunks that are extracted once
-at the end via /speech/extract)."""
+run their own extraction on the transcript)."""
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user, require_patient
+from ..auth import get_current_user
 from ..database import get_db
 from ..gemini import extract_health_data, transcribe_audio
 from ..models import CategoryMetric, Observation, ProfileItem, User
@@ -115,6 +114,11 @@ async def transcribe(
     try:
         text = transcribe_audio(audio, file.content_type or "audio/webm", language)
     except Exception as e:
+        if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "AI transcription quota exceeded — please try again in a minute.",
+            )
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
             f"Transcription service unavailable: {e.__class__.__name__}",
@@ -131,26 +135,3 @@ async def transcribe(
             logger.exception("Gemini health extraction failed; returning transcript only")
 
     return _to_out(text, stored_obs, stored_items)
-
-
-class ExtractIn(BaseModel):
-    text: str = Field(min_length=1, max_length=20_000)
-
-
-@router.post("/extract", response_model=VoiceIntakeOut)
-def extract(
-    data: ExtractIn,
-    patient: User = Depends(require_patient),
-    db: Session = Depends(get_db),
-):
-    """Extract + store health data from an already-transcribed text (the live
-    dictation flow transcribes chunk by chunk, then extracts once from here)."""
-    try:
-        stored_obs, stored_items = _extract_and_store(db, patient, data.text)
-    except Exception as e:
-        logger.exception("Gemini health extraction failed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            f"Extraction service unavailable: {e.__class__.__name__}",
-        )
-    return _to_out(data.text, stored_obs, stored_items)

@@ -549,15 +549,6 @@ export const api = {
     });
   },
 
-  // Extract + store health data from already-transcribed text (patients only).
-  // The live-dictation flow transcribes chunk by chunk, then calls this once.
-  extractHealth: (text: string) =>
-    apiFetch<{
-      text: string;
-      observations: Observation[];
-      profile_items: ProfileItem[];
-    }>("/speech/extract", { method: "POST", body: { text } }),
-
   // ----- documents -----
   listDocuments: (patientId: number) =>
     apiFetch<PatientDocument[]>(`/documents/patient/${patientId}`),
